@@ -15,54 +15,43 @@
 #define MAX_PROCESS                 0x10
 #define MAX_EXTERNAL_INTR           0x10
 
-#define RISCV_LITE_EXECUTOR_MMIO_SIZE   0x1000000
+#define RISCV_LITE_EXECUTOR_MMIO_SIZE           0x1000000
 
 // MMIO Structure
-#define PROCESS_MMIO_OFFSET             0x0
-#define PROCESS_MMIO_SIZE               0x1000
-#define PROCESS_MMIO_COUNT              0xffd // 4093
-#define EXT_INTR_HANDLER_MMIO_OFFSET    ((PROCESS_MMIO_OFFSET) + (PROCESS_MMIO_SIZE) * (PROCESS_MMIO_COUNT))
-#define EXT_INTR_HANDLER_MMIO_SIZE      0x2128
-#define GLOBAL_RESERVED_MMIO_OFFSET     ((EXT_INTR_HANDLER_MMIO_OFFSET) + (EXT_INTR_HANDLER_MMIO_SIZE))
+#define PROCESS_MMIO_OFFSET                     0x0
+#define PROCESS_MMIO_SIZE                       0x1000
+#define PROCESS_MMIO_COUNT                      0x1000 // 4096
+#define PROCESS_END_MMIO_OFFSET                 ((PROCESS_MMIO_OFFSET) + (PROCESS_MMIO_SIZE) * (PROCESS_MMIO_COUNT))
 
 // Process MMIO Structure
-#define PRIO_SCHEDULER_MMIO_OFFSET      0x0
-#define PRIO_SCHEDULER_MMIO_SIZE        0x800
-#define IPC_HANDLER_MMIO_OFFSET         ((PRIO_SCHEDULER_MMIO_OFFSET) + (PRIO_SCHEDULER_MMIO_SIZE))
-#define IPC_HANDLER_MMIO_SIZE           0x100
-#define PROCESS_RESERVED_MMIO_OFFSET    ((IPC_HANDLER_MMIO_OFFSET) + (IPC_HANDLER_MMIO_SIZE))
+#define PRIO_SCHEDULER_MMIO_OFFSET              0x0
+#define PRIO_SCHEDULER_MMIO_SIZE                0x800
+#define IPC_HANDLER_MMIO_OFFSET                 ((PRIO_SCHEDULER_MMIO_OFFSET) + (PRIO_SCHEDULER_MMIO_SIZE))
+#define IPC_HANDLER_MMIO_SIZE                   0x100
+#define EXTERNAL_INTERRUPT_HANDLER_MMIO_OFFSET  ((IPC_HANDLER_MMIO_OFFSET) + (IPC_HANDLER_MMIO_SIZE))
+#define EXTERNAL_INTERRUPT_HANDLER_MMIO_SIZE    0x700
 
 // Priority Scheduler MMIO Structure
-#define PS_CONTROL_MMIO_OFFSET          0x0
-#define PS_CONTROL_MMIO_SIZE            0x20
-#define PS_MEMBUF_MMIO_OFFSET           ((PS_CONTROL_MMIO_OFFSET) + (PS_CONTROL_MMIO_SIZE))
-#define PS_MEMBUF_MMIO_SIZE             0x8
-#define PS_DEQUEUE_MMIO_OFFSET          ((PS_MEMBUF_MMIO_OFFSET) + (PS_MEMBUF_MMIO_SIZE))
-#define PS_DEQUEUE_MMIO_SIZE            0x8
-#define PS_ENQUEUE_MMIO_OFFSET          ((PS_DEQUEUE_MMIO_OFFSET) + (PS_DEQUEUE_MMIO_SIZE))
-#define PS_ENQUEUE_MMIO_SIZE            0x8
-#define PS_ENQUEUE_MMIO_COUNT           0xfa // 250
-#define PS_END_MMIO_OFFSET              ((PS_ENQUEUE_MMIO_OFFSET) + (PS_ENQUEUE_MMIO_SIZE) * (PS_ENQUEUE_MMIO_COUNT))
+#define PS_DEQUEUE_MMIO_OFFSET                  0x0
+#define PS_DEQUEUE_MMIO_SIZE                    0x8
+#define PS_ENQUEUE_MMIO_OFFSET                  ((PS_DEQUEUE_MMIO_OFFSET) + (PS_DEQUEUE_MMIO_SIZE))
+#define PS_ENQUEUE_MMIO_SIZE                    0x8
+#define PS_ENQUEUE_MMIO_COUNT                   0xff // 255
+#define PS_END_MMIO_OFFSET                      ((PS_ENQUEUE_MMIO_OFFSET) + (PS_ENQUEUE_MMIO_SIZE) * (PS_ENQUEUE_MMIO_COUNT))
 
 // IPC Handler MMIO Structure
-#define IH_CONTROL_MMIO_OFFSET          0x0
-#define IH_CONTROL_MMIO_SIZE            0x8
-#define IH_MEMBUF_MMIO_OFFSET           ((IH_CONTROL_MMIO_OFFSET) + (IH_CONTROL_MMIO_SIZE))
-#define IH_MEMBUF_MMIO_SIZE             0x8
-#define IH_MESSAGE_POINTER_MMIO_OFFSET  ((IH_MEMBUF_MMIO_OFFSET) + (IH_MEMBUF_MMIO_SIZE))
-#define IH_MESSAGE_POINTER_MMIO_SIZE    0x8
-#define IH_BQ_MMIO_OFFSET               ((IH_MESSAGE_POINTER_MMIO_OFFSET) + (IH_MESSAGE_POINTER_MMIO_SIZE))
-#define IH_BQ_MMIO_SIZE                 0x8
-#define IH_BQ_MMIO_COUNT                0x10 // 16
-#define IH_RESERVED_MMIO_OFFSET         ((IH_BQ_MMIO_OFFSET) + (IH_BQ_MMIO_SIZE) * (IH_BQ_MMIO_COUNT))
+#define IH_SEND_MMIO_OFFSET                     0x0
+#define IH_SEND_MMIO_SIZE                       0x8
+#define IH_BQ_MMIO_OFFSET                       ((IH_SEND_MMIO_OFFSET) + (IH_SEND_MMIO_SIZE))
+#define IH_BQ_MMIO_SIZE                         0x8
+#define IH_BQ_MMIO_COUNT                        0x1f // 31
+#define IH_END_MMIO_OFFSET                      ((IH_BQ_MMIO_OFFSET) + (IH_BQ_MMIO_SIZE) * (IH_BQ_MMIO_COUNT))
 
 // External Interrupt Handler MMIO Structure
-#define EIH_CONTROL_MMIO_OFFSET         0x0
-#define EIH_CONTROL_MMIO_SIZE           0x80
-#define EIH_ENQUEUE_MMIO_OFFSET         ((EIH_CONTROL_MMIO_OFFSET) + (EIH_CONTROL_MMIO_SIZE))
-#define EIH_ENQUEUE_MMIO_SIZE           0x8
-#define EIH_ENQUEUE_MMIO_COUNT          0x400 // 1024
-#define EIH_END_MMIO_OFFSET             ((EIH_ENQUEUE_MMIO_OFFSET) + (EIH_ENQUEUE_MMIO_SIZE) * (EIH_ENQUEUE_MMIO_COUNT))
+#define EIH_ENQUEUE_MMIO_OFFSET                 0x0
+#define EIH_ENQUEUE_MMIO_SIZE                   0x8
+#define EIH_ENQUEUE_MMIO_COUNT                  0xe0 // 224
+#define EIH_END_MMIO_OFFSET                     ((EIH_ENQUEUE_MMIO_OFFSET) + (EIH_ENQUEUE_MMIO_SIZE) * (EIH_ENQUEUE_MMIO_COUNT))
 
 typedef struct {
     uint64_t ps_mbuf;
@@ -95,9 +84,18 @@ typedef struct {
     Queue *task_queues;
 }PriorityScheduler;
 
+typedef struct {
+    Queue *interrupt_queues;
+}ExternalInterruptHandler;
+
+
 void ps_init(PriorityScheduler* ps);
 void ps_push(PriorityScheduler* ps, uint64_t priority, uint64_t data);
 uint64_t ps_pop(PriorityScheduler* ps);
+
+void eih_init(ExternalInterruptHandler* eih);
+void eih_push(ExternalInterruptHandler* eih, uint64_t intr_num, uint64_t data);
+uint64_t eih_pop(ExternalInterruptHandler* eih, uint64_t intr_num);
 
 typedef struct RISCVLiteExecutor
 {
@@ -109,7 +107,7 @@ typedef struct RISCVLiteExecutor
     ProcStatus *pst;
     PriorityScheduler *pschedulers;
     // external interrupt handler queues
-    Queue *eihqs;
+    ExternalInterruptHandler *eihs;
     // rw buffer? convert 32bit read to 64bit read
     uint64_t read_buf;
     uint64_t expect_read_addr; // -1 indicates no expect address

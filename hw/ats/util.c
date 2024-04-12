@@ -89,5 +89,34 @@ uint64_t ps_pop(PriorityScheduler* ps) {
     return res;
 }
 
+/************************************************/
+
+void eih_init(ExternalInterruptHandler* eih) {
+    eih->interrupt_queues = g_new0(Queue, MAX_EXTERNAL_INTR);
+    int i = 0;
+    for(i = 0; i < MAX_EXTERNAL_INTR; i++) {
+        QSIMPLEQ_INIT(&eih->interrupt_queues[i].head);
+    }
+}
+
+void eih_push(ExternalInterruptHandler* eih, uint64_t intr_num, uint64_t data) {
+    struct QueueEntry *eih_entry = g_new0(struct QueueEntry, 1);
+    eih_entry->data = data;
+    QSIMPLEQ_INSERT_TAIL(&eih->interrupt_queues[intr_num].head, eih_entry, next);
+}
+
+uint64_t eih_pop(ExternalInterruptHandler* eih, uint64_t intr_num) {
+    QueueHead *head = &eih->interrupt_queues[intr_num].head;
+    if (head->sqh_first != NULL) {
+        struct QueueEntry *eih_entry = head->sqh_first;
+        uint64_t res = eih_entry->data;
+        g_free(eih_entry);
+        QSIMPLEQ_REMOVE_HEAD(head, next);
+        return res;
+    }
+    else {
+        return 0;
+    }
+}
 
 
