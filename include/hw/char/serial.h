@@ -103,7 +103,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(SerialMM, SERIAL_MM)
 
 SerialMM *serial_mm_init(MemoryRegion *address_space,
                          hwaddr base, int regshift,
-                         qemu_irq irq, int baudbase,
+                         qemu_irq irq1, qemu_irq irq2, int baudbase,
                          Chardev *chr, enum device_endian end);
 
 /* serial-isa.c */

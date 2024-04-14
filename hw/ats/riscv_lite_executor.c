@@ -114,7 +114,7 @@ static void riscv_lite_executor_write(void *opaque, hwaddr addr, uint64_t value,
             assert(enqueue_index < MAX_TASK_QUEUE);
             uint64_t index = lite_executor->pst[process_index].index;
             ps_push(&lite_executor->pschedulers[index], enqueue_index, value);
-            info_report("WRITE LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Priority scheduler enqueue field, process %d, queue %d", addr, value, process_index, enqueue_index);
+            // info_report("WRITE LITE EXECUTOR: addr 0x%08lx, value 0x%016lx -> Priority scheduler enqueue field, process %d, queue %d", addr, value, process_index, enqueue_index);
         }
     }
     else if(process_addr < EXTERNAL_INTERRUPT_HANDLER_MMIO_OFFSET) {
@@ -159,7 +159,9 @@ static const MemoryRegionOps riscv_lite_executor_ops = {
 static void riscv_lite_executor_irq_request(void *opaque, int irq, int level)
 {
     // 这句是用来测试是否成功接收中断的，但保留这句会在一直打印刷屏，所以注释了。
-    // info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
+    if(irq != 10) {
+        info_report("RISCV LITE EXECUTOR RECEIVE IRQ: %d", irq);
+    }
 
     RISCVLiteExecutor *lite_executor = opaque;
     // test serial interrupt handler

@@ -99,9 +99,9 @@ DeviceState *sysbus_create_varargs(const char *name,
 
 static inline DeviceState *sysbus_create_simple(const char *name,
                                               hwaddr addr,
-                                              qemu_irq irq)
+                                              qemu_irq irq1, qemu_irq irq2)
 {
-    return sysbus_create_varargs(name, addr, irq, NULL);
+    return sysbus_create_varargs(name, addr, irq1, irq2, NULL);
 }
 
 #endif /* HW_SYSBUS_H */

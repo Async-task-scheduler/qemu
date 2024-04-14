@@ -1064,7 +1064,7 @@ static const VMStateDescription vmstate_serial_mm = {
 
 SerialMM *serial_mm_init(MemoryRegion *address_space,
                          hwaddr base, int regshift,
-                         qemu_irq irq, int baudbase,
+                         qemu_irq irq1, qemu_irq irq2, int baudbase,
                          Chardev *chr, enum device_endian end)
 {
     SerialMM *smm = SERIAL_MM(qdev_new(TYPE_SERIAL_MM));
@@ -1077,7 +1077,8 @@ SerialMM *serial_mm_init(MemoryRegion *address_space,
     qdev_prop_set_uint8(DEVICE(smm), "endianness", end);
     sysbus_realize_and_unref(SYS_BUS_DEVICE(smm), &error_fatal);
 
-    sysbus_connect_irq(SYS_BUS_DEVICE(smm), 0, irq);
+    sysbus_connect_irq(SYS_BUS_DEVICE(smm), 0, irq1);
+    sysbus_connect_irq(SYS_BUS_DEVICE(smm), 0, irq2);
     mr = sysbus_mmio_get_region(SYS_BUS_DEVICE(smm), 0);
     memory_region_add_subregion(address_space, base, mr);
 
