@@ -7,27 +7,50 @@
 
 #include "hw/sysbus.h"
 #include "qom/object.h"
+#include "qemu/queue.h"
+
+#define MAX_IRQ                 0x100
+#define RISCV_MOIC_MMIO_SIZE    0x1000000
+
 
 #define TYPE_RISCV_MOIC "riscv.moic"
 
 typedef struct RISCVMOICState RISCVMOICState;
 DECLARE_INSTANCE_CHECKER(RISCVMOICState, RISCV_MOIC, TYPE_RISCV_MOIC)
 
-#define MOIC_MMIO_PAGE_SHIFT          12
-#define MOIC_MMIO_PAGE_SZ             (1UL << MOIC_MMIO_PAGE_SHIFT)
-#define MOIC_MMIO_SIZE(__num_pages)   ((__num_pages) * MOIC_MMIO_PAGE_SZ)
+typedef QSIMPLEQ_HEAD(, QueueEntry) QueueHead;
 
-#define MOIC_MMIO_HART_GUEST_MAX_BTIS 6
-#define MOIC_MMIO_GROUP_MIN_SHIFT     24
+struct QueueEntry {
+    uint64_t data;
+    QSIMPLEQ_ENTRY(QueueEntry) next;
+};
 
-#define MOIC_HART_NUM_GUESTS(__guest_bits)           \
-    (1U << (__guest_bits))
-#define MOIC_HART_SIZE(__guest_bits)                 \
-    (MOIC_HART_NUM_GUESTS(__guest_bits) * MOIC_MMIO_PAGE_SZ)
-#define MOIC_GROUP_NUM_HARTS(__hart_bits)            \
-    (1U << (__hart_bits))
-#define MOIC_GROUP_SIZE(__hart_bits, __guest_bits)   \
-    (MOIC_GROUP_NUM_HARTS(__hart_bits) * MOIC_HART_SIZE(__guest_bits))
+typedef struct {
+    QueueHead head;
+} Queue;
+
+void queue_init(Queue* queue);
+void queue_push(Queue* queue, uint64_t data);
+uint64_t queue_pop(Queue* queue);
+
+typedef struct {
+    uint64_t os_id;
+    uint64_t proc_id;
+    uint64_t task_id;
+} TotalIdentity;
+
+typedef struct {
+    uint64_t task_id;
+    TotalIdentity target;
+} Capability;
+
+typedef struct {
+    TotalIdentity current;
+    Queue ready_queue;
+    uint64_t* irq_table;
+    Capability* send_cap;
+    Capability* recv_cap;
+} MoicHart;
 
 struct RISCVMOICState {
     /*< private >*/
@@ -36,19 +59,15 @@ struct RISCVMOICState {
 
     /*< public >*/
     MemoryRegion mmio;
-    uint32_t num_eistate;
-    uint32_t *eidelivery;
-    uint32_t *eithreshold;
-    uint32_t *eistate;
+
+    /* properties */
+    uint32_t hart_count;
+
 
     /* config */
-    bool mmode;
-    uint32_t hartid;
-    uint32_t num_pages;
-    uint32_t num_irqs;
+    MoicHart* moicharts;
 };
 
-DeviceState *riscv_moic_create(hwaddr addr, uint32_t hartid, bool mmode,
-                                uint32_t num_pages, uint32_t num_ids);
+DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count);
 
 #endif

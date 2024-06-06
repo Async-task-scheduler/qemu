@@ -39,6 +39,7 @@
 #include "hw/firmware/smbios.h"
 #include "hw/intc/riscv_aclint.h"
 #include "hw/intc/riscv_aplic.h"
+#include "hw/intc/riscv_moic.h"
 #include "hw/intc/sifive_plic.h"
 #include "hw/misc/sifive_test.h"
 #include "hw/platform-bus.h"
@@ -72,6 +73,7 @@ static const MemMapEntry virt_memmap[] = {
     [VIRT_MROM] =         {     0x1000,        0xf000 },
     [VIRT_TEST] =         {   0x100000,        0x1000 },
     [VIRT_RTC] =          {   0x101000,        0x1000 },
+    [VIRT_MOIC] =         {  0x1000000,     0x1000000 },
     [VIRT_CLINT] =        {  0x2000000,       0x10000 },
     [VIRT_ACLINT_SSWI] =  {  0x2F00000,        0x4000 },
     [VIRT_PCIE_PIO] =     {  0x3000000,       0x10000 },
@@ -637,6 +639,31 @@ static void create_fdt_one_aplic(RISCVVirtState *s, int socket,
     qemu_fdt_setprop_cell(ms->fdt, aplic_name, "phandle", aplic_phandle);
 }
 
+static void create_fdt_socket_moic(RISCVVirtState *s, const MemMapEntry *memmap, int socket, uint32_t *phandle) {
+    char *moic_name;
+    unsigned long moic_addr;
+    MachineState *mc = MACHINE(s);
+    static const char *const moic_compat[1] = {"moic-0.0.0"};
+
+    moic_addr = memmap[VIRT_MOIC].base + (memmap[VIRT_MOIC].size * socket);
+    moic_name = g_strdup_printf("/soc/moic@%lx", moic_addr);
+    qemu_fdt_add_subnode(mc->fdt, moic_name);
+    qemu_fdt_setprop_cell(mc->fdt, moic_name,
+        "#interrupt-cells", 1);
+    qemu_fdt_setprop_cell(mc->fdt, moic_name,
+        "#address-cells", 0);
+    qemu_fdt_setprop_cell(mc->fdt, moic_name, "phandle",
+        (*phandle)++);
+    qemu_fdt_setprop_string_array(mc->fdt, moic_name, "compatible",
+                                  (char **)&moic_compat,
+                                  ARRAY_SIZE(moic_compat));
+    qemu_fdt_setprop(mc->fdt, moic_name, "interrupt-controller", NULL, 0);
+    qemu_fdt_setprop_cells(mc->fdt, moic_name, "reg", 0x0, moic_addr, 0x0, memmap[VIRT_MOIC].size);
+    riscv_socket_fdt_write_id(mc, moic_name, socket);
+    g_free(moic_name);
+
+}
+
 static void create_fdt_socket_aplic(RISCVVirtState *s,
                                     const MemMapEntry *memmap, int socket,
                                     uint32_t msi_m_phandle,
@@ -763,6 +790,7 @@ static void create_fdt_sockets(RISCVVirtState *s, const MemMapEntry *memmap,
                 create_fdt_socket_plic(s, memmap, socket, phandle,
                                        &intc_phandles[phandle_pos],
                                        xplic_phandles);
+                create_fdt_socket_moic(s, memmap, socket, phandle);
             } else {
                 create_fdt_socket_aplic(s, memmap, socket,
                                         msi_m_phandle, msi_s_phandle, phandle,
@@ -1154,6 +1182,16 @@ static FWCfgState *create_fw_cfg(const MachineState *ms)
     return fw_cfg;
 }
 
+static DeviceState *virt_create_moic(const MemMapEntry *memmap, int socket, int hart_count)
+{
+    DeviceState *ret;
+
+
+    /* Per-socket MOIC */
+    ret = riscv_moic_create(memmap[VIRT_MOIC].base + socket * memmap[VIRT_MOIC].size, hart_count);
+    return ret;
+}
+
 static DeviceState *virt_create_plic(const MemMapEntry *memmap, int socket,
                                      int base_hartid, int hart_count)
 {
@@ -1404,7 +1442,7 @@ static void virt_machine_init(MachineState *machine)
     RISCVVirtState *s = RISCV_VIRT_MACHINE(machine);
     MemoryRegion *system_memory = get_system_memory();
     MemoryRegion *mask_rom = g_new(MemoryRegion, 1);
-    DeviceState *mmio_irqchip, *virtio_irqchip, *pcie_irqchip;
+    DeviceState *mmio_irqchip, *virtio_irqchip, *pcie_irqchip, *moic_irqchip;
     int i, base_hartid, hart_count;
     int socket_count = riscv_socket_count(machine);
 
@@ -1421,7 +1459,7 @@ static void virt_machine_init(MachineState *machine)
     }
 
     /* Initialize sockets */
-    mmio_irqchip = virtio_irqchip = pcie_irqchip = NULL;
+    mmio_irqchip = virtio_irqchip = pcie_irqchip = moic_irqchip = NULL;
     for (i = 0; i < socket_count; i++) {
         g_autofree char *soc_name = g_strdup_printf("soc%d", i);
 
@@ -1495,6 +1533,7 @@ static void virt_machine_init(MachineState *machine)
         if (s->aia_type == VIRT_AIA_TYPE_NONE) {
             s->irqchip[i] = virt_create_plic(memmap, i,
                                              base_hartid, hart_count);
+            s->moic[i] = virt_create_moic(memmap, i, hart_count);
         } else {
             s->irqchip[i] = virt_create_aia(s->aia_type, s->aia_guests,
                                             memmap, i, base_hartid,
@@ -1503,6 +1542,7 @@ static void virt_machine_init(MachineState *machine)
 
         /* Try to use different IRQCHIP instance based device type */
         if (i == 0) {
+            moic_irqchip = s->moic[i];
             mmio_irqchip = s->irqchip[i];
             virtio_irqchip = s->irqchip[i];
             pcie_irqchip = s->irqchip[i];
