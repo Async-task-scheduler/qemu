@@ -62,12 +62,13 @@ struct RISCVMOICState {
 
     /* properties */
     uint32_t hart_count;
+    uint32_t external_irq_count;
 
 
     /* config */
     MoicHart* moicharts;
 };
 
-DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count);
+DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count, uint32_t external_irq_count);
 
 #endif

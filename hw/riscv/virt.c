@@ -1188,7 +1188,7 @@ static DeviceState *virt_create_moic(const MemMapEntry *memmap, int socket, int 
 
 
     /* Per-socket MOIC */
-    ret = riscv_moic_create(memmap[VIRT_MOIC].base + socket * memmap[VIRT_MOIC].size, hart_count);
+    ret = riscv_moic_create(memmap[VIRT_MOIC].base + socket * memmap[VIRT_MOIC].size, hart_count, VIRT_IRQCHIP_NUM_SOURCES);
     return ret;
 }
 
@@ -1548,6 +1548,7 @@ static void virt_machine_init(MachineState *machine)
             pcie_irqchip = s->irqchip[i];
         }
         if (i == 1) {
+            moic_irqchip = s->moic[i];
             virtio_irqchip = s->irqchip[i];
             pcie_irqchip = s->irqchip[i];
         }
@@ -1608,6 +1609,12 @@ static void virt_machine_init(MachineState *machine)
         sysbus_create_simple("virtio-mmio",
             memmap[VIRT_VIRTIO].base + i * memmap[VIRT_VIRTIO].size,
             qdev_get_gpio_in(virtio_irqchip, VIRTIO_IRQ + i));
+    }
+    // only connect to virtio irq
+    for (i = 0; i < VIRTIO_COUNT; i++) {
+        sysbus_create_simple("virtio-mmio",
+            memmap[VIRT_VIRTIO].base + i * memmap[VIRT_VIRTIO].size,
+            qdev_get_gpio_in(moic_irqchip, VIRTIO_IRQ + i));
     }
 
     gpex_pcie_init(system_memory, pcie_irqchip, s);

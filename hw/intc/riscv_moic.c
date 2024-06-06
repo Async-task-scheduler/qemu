@@ -49,6 +49,10 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
 
 }
 
+static void riscv_moic_irq_request(void *opaque, int irq, int level) {
+
+}
+
 static const MemoryRegionOps riscv_moic_ops = {
     .read = riscv_moic_read,
     .write = riscv_moic_write,
@@ -76,6 +80,11 @@ static void riscv_moic_realize(DeviceState *dev, Error **errp)
 
     info_report("low 0x%x high 0x%x", (uint32_t)moic->mmio.addr, (uint32_t)moic->mmio.size);
 
+    // init external_irqs
+    uint32_t external_irq_count = moic->external_irq_count;
+    moic->external_irqs = g_malloc(sizeof(qemu_irq) * external_irq_count);
+    qdev_init_gpio_in(dev, riscv_moic_irq_request, external_irq_count);
+
     // init moic_hart
     uint32_t hart_count = moic->hart_count;
     moic->moicharts = g_new0(MoicHart, hart_count);
@@ -91,6 +100,7 @@ static void riscv_moic_realize(DeviceState *dev, Error **errp)
 
 static Property riscv_moic_properties[] = {
     DEFINE_PROP_UINT32("hart_count", RISCVMOICState, hart_count, 0),
+    DEFINE_PROP_UINT32("external_irq_count", RISCVMOICState, external_irq_count, 0),
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -109,11 +119,12 @@ static const TypeInfo riscv_moic_info = {
     .class_init    = riscv_moic_class_init,
 };
 
-DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count) {
+DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count, uint32_t external_irq_count) {
     qemu_log("create moic\n");
 
     DeviceState *dev = qdev_new(TYPE_RISCV_MOIC);
     qdev_prop_set_uint32(dev, "hart_count", hart_count);
+    qdev_prop_set_uint32(dev, "external_irq_count", external_irq_count);
 
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, addr);
