@@ -256,6 +256,16 @@ struct CPUArchState {
     target_ulong mcause;
     target_ulong mtval;  /* since: priv-1.10.0 */
 
+    // user interrupt CSRs
+    target_ulong utvec;
+    target_ulong uscratch;
+    target_ulong uepc;
+    target_ulong ucause;
+    target_ulong utval;
+    
+    target_ulong sedeleg;
+    target_ulong sideleg;
+
     /* Machine and Supervisor interrupt priorities */
     uint8_t miprio[64];
     uint8_t siprio[64];

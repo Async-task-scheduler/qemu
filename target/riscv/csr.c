@@ -296,6 +296,15 @@ static RISCVException aia_smode32(CPURISCVState *env, int csrno)
     return smode32(env, csrno);
 }
 
+static RISCVException nmode(CPURISCVState *env, int csrno)
+{
+    if (riscv_has_ext(env, RVN)) {
+        return RISCV_EXCP_NONE;
+    }
+
+    return RISCV_EXCP_ILLEGAL_INST;
+}
+
 static RISCVException hmode(CPURISCVState *env, int csrno)
 {
     if (riscv_has_ext(env, RVH)) {
@@ -1148,11 +1157,11 @@ static RISCVException write_stimecmph(CPURISCVState *env, int csrno,
 #define LOCAL_INTERRUPTS (~0x1FFF)
 
 static const uint64_t delegable_ints =
-    S_MODE_INTERRUPTS | VS_MODE_INTERRUPTS | MIP_LCOFIP;
+    S_MODE_INTERRUPTS | VS_MODE_INTERRUPTS | MIP_LCOFIP | U_MODE_INTERRUPTS;
 static const uint64_t vs_delegable_ints =
     (VS_MODE_INTERRUPTS | LOCAL_INTERRUPTS) & ~MIP_LCOFIP;
 static const uint64_t all_ints = M_MODE_INTERRUPTS | S_MODE_INTERRUPTS |
-                                     HS_MODE_INTERRUPTS | LOCAL_INTERRUPTS;
+                                     HS_MODE_INTERRUPTS | LOCAL_INTERRUPTS | U_MODE_INTERRUPTS;
 #define DELEGABLE_EXCPS ((1ULL << (RISCV_EXCP_INST_ADDR_MIS)) | \
                          (1ULL << (RISCV_EXCP_INST_ACCESS_FAULT)) | \
                          (1ULL << (RISCV_EXCP_ILLEGAL_INST)) | \
@@ -1209,6 +1218,9 @@ static const target_ulong hvip_writable_mask = MIP_VSSIP | MIP_VSTIP |
 static const target_ulong hvien_writable_mask = LOCAL_INTERRUPTS;
 
 static const target_ulong vsip_writable_mask = MIP_VSSIP | LOCAL_INTERRUPTS;
+
+static const target_ulong ustatus_mask = USTATUS_UIE | USTATUS_UPIE;
+static const target_ulong uip_writable_mask = MIP_USIP | MIP_UEIP;
 
 const bool valid_vm_1_10_32[16] = {
     [VM_1_10_MBARE] = true,
@@ -4539,6 +4551,133 @@ static RISCVException write_jvt(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+/* N extensions */
+static int read_ustatus(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->mstatus & ustatus_mask;
+    return 0;
+}
+
+static int write_ustatus(CPURISCVState *env, int csrno, target_ulong val)
+{
+    target_ulong newval = (env->mstatus & ~ustatus_mask) | (val & ustatus_mask);
+    return write_mstatus(env, CSR_MSTATUS, newval);
+}
+
+static RISCVException rmw_uie(CPURISCVState *env, int csrno,
+                             uint64_t *ret_val, 
+                             uint64_t new_val, uint64_t wr_mask)
+{
+    RISCVException ret;
+    uint64_t mask = env->sideleg & U_MODE_INTERRUPTS;
+    ret = rmw_mie64(env, csrno, ret_val, new_val, wr_mask & mask);
+    if (ret_val) {
+        *ret_val &= mask;
+    }
+    return ret;
+}
+
+static int read_utvec(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->utvec;
+    return 0;
+}
+
+static int write_utvec(CPURISCVState *env, int csrno, target_ulong val)
+{
+    /* bits [1:0] encode mode; 0 = direct, 1 = vectored, 2 >= reserved */
+    if ((val & 3) < 2) {
+        env->utvec = val;
+    } else {
+        qemu_log_mask(LOG_UNIMP, "CSR_UTVEC: reserved mode not supported\n");
+    }
+    return 0;
+}
+
+static int read_uscratch(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->uscratch;
+    return 0;
+}
+
+static int write_uscratch(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->uscratch = val;
+    return 0;
+}
+
+static int read_uepc(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->uepc;
+    return 0;
+}
+
+static int write_uepc(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->uepc = val;
+    return 0;
+}
+
+static int read_ucause(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->ucause;
+    return 0;
+}
+
+static int write_ucause(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->ucause = val;
+    return 0;
+}
+
+static int rmw_uip(CPURISCVState *env, int csrno, target_ulong *ret_value,
+                   target_ulong new_value, target_ulong write_mask)
+{
+    int ret;
+
+    ret = rmw_mip(env, CSR_MSTATUS, ret_value, new_value,
+                  write_mask & env->sideleg & uip_writable_mask);
+
+    *ret_value &= env->sideleg;
+    return ret;
+}
+
+static int read_utval(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->utval;
+    return 0;
+}
+
+static int write_utval(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->utval = val;
+    return 0;
+}
+
+static int read_sedeleg(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    *val = env->sedeleg;
+    return 0;
+}
+
+static int write_sedeleg(CPURISCVState *env, int csrno, target_ulong val)
+{
+    env->sedeleg = val;
+    return 0;
+}
+
+static RISCVException rmw_sideleg(CPURISCVState *env, int csrno,
+                                  target_ulong *ret_val,
+                                  target_ulong new_val, target_ulong wr_mask)
+{
+    uint64_t mask = wr_mask & delegable_ints;
+    if (ret_val) {
+        *ret_val = env->sideleg;
+    }
+    env->sideleg = (env->sideleg & ~mask) | (new_val & mask);
+    return RISCV_EXCP_NONE;
+}
+
 /*
  * Control and Status Register function table
  * riscv_csr_operations::predicate() must be provided for an implemented CSR
@@ -4747,6 +4886,17 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     /* Supervisor-Level High-Half CSRs (AIA) */
     [CSR_SIEH]       = { "sieh",   aia_smode32, NULL, NULL, rmw_sieh },
     [CSR_SIPH]       = { "siph",   aia_smode32, NULL, NULL, rmw_siph },
+
+    [CSR_USTATUS]  = { "ustatus",  nmode, read_ustatus,  write_ustatus  },
+    [CSR_UIE]      = { "uie",      nmode, NULL, NULL,    rmw_uie        },
+    [CSR_UTVEC]    = { "utvec",    nmode, read_utvec,    write_utvec    },
+    [CSR_USCRATCH] = { "uscratch", nmode, read_uscratch, write_uscratch },
+    [CSR_UEPC]     = { "uepc",     nmode, read_uepc,     write_uepc     },
+    [CSR_UCAUSE]   = { "ucause",   nmode, read_ucause,   write_ucause   },
+    [CSR_UIP]      = { "uip",      nmode, NULL, NULL,    rmw_uip        },
+    [CSR_UTVAL]    = { "utval",    nmode, read_utval,    write_utval    },
+    [CSR_SIDELEG]  = { "sideleg",  nmode, NULL, NULL,    rmw_sideleg    },
+    [CSR_SEDELEG]  = { "sedeleg",  nmode, read_sedeleg,  write_sedeleg  },
 
     [CSR_HSTATUS]     = { "hstatus",     hmode,   read_hstatus, write_hstatus,
                           .min_priv_ver = PRIV_VERSION_1_12_0                },

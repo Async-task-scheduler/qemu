@@ -185,6 +185,8 @@
 
 /* Supervisor Trap Setup */
 #define CSR_SSTATUS         0x100
+#define CSR_SEDELEG         0x102
+#define CSR_SIDELEG         0x103
 #define CSR_SIE             0x104
 #define CSR_STVEC           0x105
 #define CSR_SCOUNTEREN      0x106
@@ -561,6 +563,10 @@ typedef enum {
     MXL_RV128 = 3,
 } RISCVMXL;
 
+/* ustatus CSR bits */
+#define USTATUS_UIE         0x00000001
+#define USTATUS_UPIE        0x00000010
+
 /* sstatus CSR bits */
 #define SSTATUS_UIE         0x00000001
 #define SSTATUS_SIE         0x00000002
@@ -733,6 +739,7 @@ typedef enum RISCVException {
 #define S_MODE_INTERRUPTS  ((uint64_t)(MIP_SSIP | MIP_STIP | MIP_SEIP))
 #define VS_MODE_INTERRUPTS ((uint64_t)(MIP_VSSIP | MIP_VSTIP | MIP_VSEIP))
 #define HS_MODE_INTERRUPTS ((uint64_t)(MIP_SGEIP | VS_MODE_INTERRUPTS))
+#define U_MODE_INTERRUPTS ((uint64_t)(MIP_USIP | MIP_UTIP | MIP_UEIP))
 
 /* General PointerMasking CSR bits */
 #define PM_ENABLE       0x00000001ULL
