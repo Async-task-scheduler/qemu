@@ -2290,6 +2290,20 @@ static void rva22s64_profile_cpu_init(Object *obj)
 
     RVA22S64.enabled = true;
 }
+/* Initialize a new RVN CPU */
+static void rv64gcsu_n_cpu_init(Object* obj) {
+    info_report("rv64gcsu_n_cpu_init");
+    RISCVCPU *cpu = RISCV_CPU(obj);
+    CPURISCVState *env = &cpu->env;
+    riscv_cpu_set_misa_ext(env, MXL_RV64 | RVI | RVM | RVA | RVF | RVD | RVC | RVS | RVU | RVN);
+    env->priv_ver = PRIV_VERSION_LATEST;
+    env->resetvec = DEFAULT_RSTVEC;
+    cpu->cfg.pmp = true;
+    cpu->cfg.mmu = true;
+#ifndef CONFIG_USER_ONLY
+    set_satp_mode_max_supported(RISCV_CPU(obj), VM_1_10_SV57);
+#endif
+}
 #endif
 
 static const gchar *riscv_gdb_arch_name(CPUState *cs)
@@ -2555,6 +2569,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
     DEFINE_BARE_CPU(TYPE_RISCV_CPU_RV64E,        MXL_RV64,  rv64e_bare_cpu_init),
     DEFINE_PROFILE_CPU(TYPE_RISCV_CPU_RVA22U64,  MXL_RV64,  rva22u64_profile_cpu_init),
     DEFINE_PROFILE_CPU(TYPE_RISCV_CPU_RVA22S64,  MXL_RV64,  rva22s64_profile_cpu_init),
+    DEFINE_DYNAMIC_CPU(TYPE_RISCV_CPU_RV64GCSU_N,MXL_RV64,  rv64gcsu_n_cpu_init),
 #endif
 };
 
