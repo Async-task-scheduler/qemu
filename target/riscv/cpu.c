@@ -2300,6 +2300,8 @@ static void rv64gcsu_n_cpu_init(Object* obj) {
     env->resetvec = DEFAULT_RSTVEC;
     cpu->cfg.pmp = true;
     cpu->cfg.mmu = true;
+    // set the ext_n true
+    cpu->cfg.ext_n = true;
 #ifndef CONFIG_USER_ONLY
     set_satp_mode_max_supported(RISCV_CPU(obj), VM_1_10_SV57);
 #endif

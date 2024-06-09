@@ -37,6 +37,7 @@ typedef struct {
 } RISCVSATPMap;
 
 struct RISCVCPUConfig {
+    bool ext_n;
     bool ext_zba;
     bool ext_zbb;
     bool ext_zbc;
