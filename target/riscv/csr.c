@@ -1219,8 +1219,8 @@ static const target_ulong hvien_writable_mask = LOCAL_INTERRUPTS;
 
 static const target_ulong vsip_writable_mask = MIP_VSSIP | LOCAL_INTERRUPTS;
 
-static const target_ulong ustatus_mask = USTATUS_UIE | USTATUS_UPIE;
-static const target_ulong uip_writable_mask = MIP_USIP | MIP_UEIP;
+static const target_ulong ustatus_mask = USTATUS_UIE | USTATUS_UPIE | LOCAL_INTERRUPTS;
+static const target_ulong uip_writable_mask = MIP_USIP | MIP_UEIP | LOCAL_INTERRUPTS;
 
 const bool valid_vm_1_10_32[16] = {
     [VM_1_10_MBARE] = true,
@@ -1380,7 +1380,8 @@ static RISCVException write_mstatus(CPURISCVState *env, int csrno,
     if ((val ^ mstatus) & MSTATUS_MXR) {
         tlb_flush(env_cpu(env));
     }
-    mask = MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_MIE | MSTATUS_MPIE |
+    mask = MSTATUS_UIE | MSTATUS_UPIE |
+        MSTATUS_SIE | MSTATUS_SPIE | MSTATUS_MIE | MSTATUS_MPIE |
         MSTATUS_SPP | MSTATUS_MPRV | MSTATUS_SUM |
         MSTATUS_MPP | MSTATUS_MXR | MSTATUS_TVM | MSTATUS_TSR |
         MSTATUS_TW;
@@ -2753,7 +2754,7 @@ static RISCVException rmw_sie64(CPURISCVState *env, int csrno,
 {
     uint64_t nalias_mask = (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS) &
         (~env->mideleg & env->mvien);
-    uint64_t alias_mask = (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS) & env->mideleg;
+    uint64_t alias_mask = (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS | U_MODE_INTERRUPTS) & env->mideleg;
     uint64_t sie_mask = wr_mask & nalias_mask;
     RISCVException ret;
 
@@ -3007,7 +3008,7 @@ static RISCVException rmw_sip64(CPURISCVState *env, int csrno,
 
     if (ret_val) {
         *ret_val &= (env->mideleg | env->mvien) &
-            (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS);
+            (S_MODE_INTERRUPTS | LOCAL_INTERRUPTS | U_MODE_INTERRUPTS);
     }
 
     return ret;
@@ -4552,13 +4553,13 @@ static RISCVException write_jvt(CPURISCVState *env, int csrno,
 }
 
 /* N extensions */
-static int read_ustatus(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_ustatus(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->mstatus & ustatus_mask;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_ustatus(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_ustatus(CPURISCVState *env, int csrno, target_ulong val)
 {
     target_ulong newval = (env->mstatus & ~ustatus_mask) | (val & ustatus_mask);
     return write_mstatus(env, CSR_MSTATUS, newval);
@@ -4569,7 +4570,7 @@ static RISCVException rmw_uie(CPURISCVState *env, int csrno,
                              uint64_t new_val, uint64_t wr_mask)
 {
     RISCVException ret;
-    uint64_t mask = env->sideleg & U_MODE_INTERRUPTS;
+    uint64_t mask = env->sideleg & U_MODE_INTERRUPTS & LOCAL_INTERRUPTS;
     ret = rmw_mie64(env, csrno, ret_val, new_val, wr_mask & mask);
     if (ret_val) {
         *ret_val &= mask;
@@ -4577,13 +4578,13 @@ static RISCVException rmw_uie(CPURISCVState *env, int csrno,
     return ret;
 }
 
-static int read_utvec(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_utvec(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->utvec;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_utvec(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_utvec(CPURISCVState *env, int csrno, target_ulong val)
 {
     /* bits [1:0] encode mode; 0 = direct, 1 = vectored, 2 >= reserved */
     if ((val & 3) < 2) {
@@ -4591,49 +4592,49 @@ static int write_utvec(CPURISCVState *env, int csrno, target_ulong val)
     } else {
         qemu_log_mask(LOG_UNIMP, "CSR_UTVEC: reserved mode not supported\n");
     }
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int read_uscratch(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_uscratch(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->uscratch;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_uscratch(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_uscratch(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->uscratch = val;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int read_uepc(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_uepc(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->uepc;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_uepc(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_uepc(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->uepc = val;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int read_ucause(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_ucause(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->ucause;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_ucause(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_ucause(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->ucause = val;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int rmw_uip(CPURISCVState *env, int csrno, target_ulong *ret_value,
+static RISCVException rmw_uip(CPURISCVState *env, int csrno, target_ulong *ret_value,
                    target_ulong new_value, target_ulong write_mask)
 {
-    int ret;
+    RISCVException ret;
 
     ret = rmw_mip(env, CSR_MSTATUS, ret_value, new_value,
                   write_mask & env->sideleg & uip_writable_mask);
@@ -4642,28 +4643,28 @@ static int rmw_uip(CPURISCVState *env, int csrno, target_ulong *ret_value,
     return ret;
 }
 
-static int read_utval(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_utval(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->utval;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_utval(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_utval(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->utval = val;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int read_sedeleg(CPURISCVState *env, int csrno, target_ulong *val)
+static RISCVException read_sedeleg(CPURISCVState *env, int csrno, target_ulong *val)
 {
     *val = env->sedeleg;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
-static int write_sedeleg(CPURISCVState *env, int csrno, target_ulong val)
+static RISCVException write_sedeleg(CPURISCVState *env, int csrno, target_ulong val)
 {
     env->sedeleg = val;
-    return 0;
+    return RISCV_EXCP_NONE;
 }
 
 static RISCVException rmw_sideleg(CPURISCVState *env, int csrno,
