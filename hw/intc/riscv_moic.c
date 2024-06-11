@@ -135,7 +135,7 @@ static uint64_t riscv_moic_read(void *opaque, hwaddr addr, unsigned size) {
             int i = 0;
             for(i = 0; i < hart_count; i++) {
                 if ((i != idx) && (moic->moicharts[i].current.proc_id == proc_id)) {
-                    uint64_t task_id = pq_pop(&moic->moicharts[i].ready_queue);
+                    task_id = pq_pop(&moic->moicharts[i].ready_queue);
                     if (task_id != 0) {
                         moic->moicharts[idx].current.task_id = task_id;
                         return task_id;
@@ -168,6 +168,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
     } else if (op == REGISTER_RECV_TARGET_PROC_OP) {
         moic->moicharts[idx].register_receiver_transaction.target.proc_id = value;
     } else if (op == REGISTER_RECV_TARGET_TASK_OP) {
+        moic->moicharts[idx].register_receiver_transaction.target.task_id = value;
         // register receiver
         uint64_t task_id = moic->moicharts[idx].register_receiver_transaction.task_id;
         
@@ -196,7 +197,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
         uint64_t task_id = moic->moicharts[idx].register_sender_transaction.task_id;
         uint64_t target_os_id = moic->moicharts[idx].register_sender_transaction.target.os_id;
         uint64_t target_proc_id = moic->moicharts[idx].register_sender_transaction.target.proc_id;
-        uint64_t target_task_id = value;
+        uint64_t target_task_id = moic->moicharts[idx].register_sender_transaction.target.task_id = value;
         if (target_os_id == 0 || target_proc_id == 0 || target_task_id == 0 || task_id == 0) {
             return;
         }
