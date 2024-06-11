@@ -129,10 +129,20 @@ static uint64_t riscv_moic_read(void *opaque, hwaddr addr, unsigned size) {
             moic->moicharts[idx].current.task_id = task_id;
             return task_id;
         } else {
-            // steal a task from other hart
-
+            // steal a task in the same process on the local ready queue of other harts.
+            uint64_t proc_id = moic->moicharts[idx].current.proc_id;
+            uint32_t hart_count = moic->hart_count;
+            int i = 0;
+            for(i = 0; i < hart_count; i++) {
+                if ((i != idx) && (moic->moicharts[i].current.proc_id == proc_id)) {
+                    uint64_t task_id = pq_pop(&moic->moicharts[i].ready_queue);
+                    if (task_id != 0) {
+                        moic->moicharts[idx].current.task_id = task_id;
+                        return task_id;
+                    } 
+                }
+            }
         }
-        
     } else {
         error_report("Operation is not supported");
     }
