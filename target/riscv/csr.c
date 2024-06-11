@@ -4570,7 +4570,7 @@ static RISCVException rmw_uie(CPURISCVState *env, int csrno,
                              uint64_t new_val, uint64_t wr_mask)
 {
     RISCVException ret;
-    uint64_t mask = env->sideleg & U_MODE_INTERRUPTS & LOCAL_INTERRUPTS;
+    uint64_t mask = env->sideleg & (U_MODE_INTERRUPTS | LOCAL_INTERRUPTS);
     ret = rmw_mie64(env, csrno, ret_val, new_val, wr_mask & mask);
     if (ret_val) {
         *ret_val &= mask;
