@@ -1156,6 +1156,7 @@ static RISCVException write_stimecmph(CPURISCVState *env, int csrno,
 
 #define LOCAL_INTERRUPTS (~0x1FFF)
 
+static const uint64_t u_delegable_ints = U_MODE_INTERRUPTS;
 static const uint64_t delegable_ints =
     S_MODE_INTERRUPTS | VS_MODE_INTERRUPTS | MIP_LCOFIP | U_MODE_INTERRUPTS;
 static const uint64_t vs_delegable_ints =
@@ -4663,7 +4664,7 @@ static RISCVException read_sedeleg(CPURISCVState *env, int csrno, target_ulong *
 
 static RISCVException write_sedeleg(CPURISCVState *env, int csrno, target_ulong val)
 {
-    env->sedeleg = val;
+    env->sedeleg = (env->sedeleg & ~DELEGABLE_EXCPS) | (val & DELEGABLE_EXCPS);
     return RISCV_EXCP_NONE;
 }
 
@@ -4671,7 +4672,7 @@ static RISCVException rmw_sideleg(CPURISCVState *env, int csrno,
                                   target_ulong *ret_val,
                                   target_ulong new_val, target_ulong wr_mask)
 {
-    uint64_t mask = wr_mask & delegable_ints;
+    uint64_t mask = wr_mask & u_delegable_ints;
     if (ret_val) {
         *ret_val = env->sideleg;
     }

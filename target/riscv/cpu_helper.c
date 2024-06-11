@@ -1668,6 +1668,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
     target_ulong htval = 0;
     target_ulong mtval2 = 0;
 
+    uint64_t sdeleg = async ? env->sideleg : env->sedeleg;
     if (!async) {
         /* set tval to badaddr for traps with address information */
         switch (cause) {
@@ -1750,8 +1751,26 @@ void riscv_cpu_do_interrupt(CPUState *cs)
                   "epc:0x"TARGET_FMT_lx", tval:0x"TARGET_FMT_lx", desc=%s\n",
                   __func__, env->mhartid, async, cause, env->pc, tval,
                   riscv_cpu_get_trap_name(cause, async));
-
-    if (env->priv <= PRV_S && cause < 64 &&
+    
+    if (riscv_has_ext(env, RVN) && cause < 64 && ((sdeleg >> cause) & 1)) {
+        // If the cpu is not in u-mode, the interrupt will not be triggled.
+        if (env->priv == PRV_U) {
+            s = env->mstatus;
+            // set upie bit
+            s = set_field(s, MSTATUS_UPIE, get_field(s, MSTATUS_UIE));
+            // clear uie bit
+            s = set_field(s, MSTATUS_UIE, 0);
+            env->mstatus = s;
+            env->ucause = cause | ((target_ulong)async << (TARGET_LONG_BITS - 1));
+            env->uepc = env->pc;
+            env->utval = tval;
+            // direct or vector
+            env->pc = (env->utvec >> 2 << 2) + 
+                ((async && (env->utvec & 3) == 1) ? cause * 4 : 0);
+            info_report("user interrupt, utvec: 0x%lx", env->utvec);
+            riscv_cpu_set_mode(env, PRV_U);
+        }
+    } else if (env->priv <= PRV_S && cause < 64 &&
         (((deleg >> cause) & 1) || s_injected || vs_injected)) {
         /* handle the trap in S-mode */
         if (riscv_has_ext(env, RVH)) {
