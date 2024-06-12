@@ -12,6 +12,7 @@
 #include "hw/qdev-properties.h"
 #include "qemu/timer.h"
 #include "hw/intc/riscv_moic.h"
+#include "exec/cpu-common.h"
 
 /******************* Utils ***************************************/
 
@@ -66,6 +67,114 @@ uint64_t pq_pop(PriorityQueue* pq) {
         }
     }
     return res;
+}
+
+bool pq_is_empty(PriorityQueue* pq) {
+    int i = 0;
+    for(i = 0; i < MAX_PRIORITY; i++) {
+        QueueHead *head = &pq->task_queues[i].head;
+        if (!QSIMPLEQ_EMPTY(head)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+uint64_t pq_len(PriorityQueue* pq) {
+    uint64_t len = 0;
+    int i = 0;
+    for(i = 0; i < MAX_PRIORITY; i++) {
+        QueueHead *head = &pq->task_queues[i].head;
+        if (QSIMPLEQ_EMPTY(head)) {
+            continue;
+        }
+        struct QueueEntry* cur, *next_elem;
+        QSIMPLEQ_FOREACH_SAFE(cur, head, next, next_elem) {
+            len += 1;
+        }
+    }
+    return len;
+}
+
+uint64_t* pq_iter(PriorityQueue* pq) {
+    uint64_t len = pq_len(pq);
+    uint64_t* task_buf = g_new0(uint64_t, len);
+    int i = 0, j = 0;
+    for(i = 0; i < MAX_PRIORITY; i++) {
+        QueueHead *head = &pq->task_queues[i].head;
+        if (QSIMPLEQ_EMPTY(head)) {
+            continue;
+        }
+        struct QueueEntry* cur, *next_elem;
+        QSIMPLEQ_FOREACH_SAFE(cur, head, next, next_elem) {
+            task_buf[j] = cur->data;
+            info_report("pq iter, task: 0x%lx", cur->data);
+            j += 1;
+            g_free(cur);
+            QSIMPLEQ_REMOVE_HEAD(head, next);
+        }
+    }
+    return task_buf;
+}
+
+// load the ready tasks in the hardware into the src_task
+// load the ready tasks of dst_task in the memory into the hardware.
+void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueue* pq) {
+    if (!pq_is_empty(pq)) {
+        // checkout tasks of the src_task
+        uint64_t len = pq_len(pq);
+        uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
+        uint64_t src_rq_addr = src_tcb + READY_QUEUE_OFFSET;
+        uint64_t* src_rq_cap = g_new0(uint64_t, 1);
+        cpu_physical_memory_read(src_rq_addr + 8 * 2, (void*)src_rq_cap, 8);
+        assert(len < *src_rq_cap);
+        g_free(src_rq_cap);
+        // read the ready queue pointer
+        uint64_t* src_rq_ptr = g_new0(uint64_t, 1);
+        cpu_physical_memory_read(src_rq_addr, (void*)src_rq_ptr, 8);
+        info_report("src_rq_ptr: 0x%lx", *src_rq_ptr);
+        uint64_t* task_buf = pq_iter(pq);
+        cpu_physical_memory_write(*src_rq_ptr, (void*)task_buf, len * 8);
+        g_free(src_rq_ptr);
+        g_free(task_buf);
+        uint64_t* src_rq_len = g_new0(uint64_t, 1);
+        *src_rq_len = len;
+        cpu_physical_memory_write(src_rq_addr + 8 * 1, (void*)src_rq_len, 8);
+        g_free(src_rq_len);
+        bool* src_rq_online = g_new0(bool, 1);
+        *src_rq_online = false;
+        cpu_physical_memory_write(src_rq_addr + 8 * 3, (void*)src_rq_online, 1);
+        g_free(src_rq_online);        
+    }
+    // load the ready tasks of dst_task from the memory.
+    uint64_t dst_tcb = dst_task_id & (~(TCB_ALIGN - 1));
+    uint64_t dst_rq_addr = dst_tcb + READY_QUEUE_OFFSET;
+    uint64_t* dst_rq_ptr = g_new0(uint64_t, 1);
+    cpu_physical_memory_read(dst_rq_addr, (void*)dst_rq_ptr, 8);
+    info_report("dst_rq_ptr: 0x%lx", *dst_rq_ptr);
+    uint64_t* dst_rq_len = g_new0(uint64_t, 1);
+    cpu_physical_memory_read(dst_rq_addr + 8 * 1, (void*)dst_rq_len, 8);
+    info_report("dst_rq_len: 0x%lx", *dst_rq_len);
+    uint64_t* dst_rq_cap = g_new0(uint64_t, 1);
+    cpu_physical_memory_read(dst_rq_addr + 8 * 2, (void*)dst_rq_cap, 8);
+    info_report("dst_rq_cap: 0x%lx", *dst_rq_cap);
+    bool* dst_rq_online = g_new0(bool, 1);
+    info_report("dst_rq_online: %d", *dst_rq_online);
+    cpu_physical_memory_read(dst_rq_addr + 8 * 3, (void*)dst_rq_online, 1);
+    uint64_t* task_buf = g_new0(uint64_t, *dst_rq_len);
+    cpu_physical_memory_read(*dst_rq_ptr, (void*)task_buf, (*dst_rq_len) * 8);
+    int i = 0;
+    for (i = 0; i < *dst_rq_len; i++) {
+        uint64_t task_id = task_buf[i];
+        info_report("task_id: 0x%lx", task_id);
+        uint64_t priority = (task_id >> 1) % MAX_PRIORITY;
+        pq_push(pq, priority, task_id);
+    }
+    g_free(dst_rq_ptr);
+    g_free(dst_rq_len);
+    g_free(dst_rq_cap);
+    g_free(dst_rq_online);
+    g_free(task_buf);
 }
 
 void cap_queue_init(CapQueue* cap_queue) {
@@ -158,9 +267,21 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
         pq_push(&moic->moicharts[idx].ready_queue, priority, value);
     } else if (op == SWITCH_OS_OP) {
         // update the current os identity
-        moic->moicharts[idx].current.os_id = value;
+        if (moic->moicharts[idx].current.os_id == 0) {
+            moic->moicharts[idx].current.os_id = value;
+            info_report("switch os_id: 0x%lx", value);
+        }
     } else if (op == SWITCH_PROC_OP) {
-        moic->moicharts[idx].current.proc_id = value;
+        if (value == 0 && moic->moicharts[idx].current.os_id != 0) {
+            /* check whether the process has task in hardware.
+               if there are ready task in the hardware, it will translate it into memory.
+             */ 
+            uint64_t src_task_id = moic->moicharts[idx].current.proc_id;
+            uint64_t dst_task_id = moic->moicharts[idx].current.os_id;
+            switch_ready_queue(src_task_id, dst_task_id, &moic->moicharts[idx].ready_queue);
+        } else if (value != 0 && moic->moicharts[idx].current.os_id != 0) {
+            
+        }
     } else if (op == REGISTER_RECV_TASK_OP) {
         moic->moicharts[idx].register_receiver_transaction.task_id = value;
     } else if (op == REGISTER_RECV_TARGET_OS_OP) {

@@ -30,6 +30,9 @@
 #define SEND_INTR_PROC_OP               0x68                
 #define SEND_INTR_TASK_OP               0x70                
 
+#define TCB_ALIGN                       0x40
+#define READY_QUEUE_OFFSET              0x00
+
 #define TYPE_RISCV_MOIC "riscv.moic"
 
 typedef struct RISCVMOICState RISCVMOICState;
@@ -57,6 +60,10 @@ typedef struct {
 void pq_init(PriorityQueue* pq);
 void pq_push(PriorityQueue* pq, uint64_t priority, uint64_t data);
 uint64_t pq_pop(PriorityQueue* pq);
+bool pq_is_empty(PriorityQueue* pq);
+uint64_t pq_len(PriorityQueue* pq);
+uint64_t* pq_iter(PriorityQueue* pq);
+void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueue* pq);
 
 typedef struct {
     uint64_t os_id;
@@ -95,6 +102,7 @@ struct CapQueueEntry* cap_queue_remove(CapQueue* cap_queue,
 bool is_device_cap(Capability* cap);
 
 typedef struct {
+    uint64_t hypervisor_id;
     TotalIdentity current;
     PriorityQueue ready_queue;
     Capability* device_cap;
