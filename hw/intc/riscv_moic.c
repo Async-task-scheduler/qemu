@@ -334,7 +334,7 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
     cpu_physical_memory_write(dst_sendcap_addr + 8 * 3, (void*)dst_sendcap_online, 1);
     Capability* send_cap_buf = g_new0(Capability, *dst_sendcap_len);
     cpu_physical_memory_read(*dst_sendcap_ptr, (void*)send_cap_buf, (*dst_sendcap_len) * sizeof(Capability));
-    uint64_t* empty_sendcap_buf = g_new0(uint64_t, *dst_sendcap_len);
+    Capability* empty_sendcap_buf = g_new0(Capability, *dst_sendcap_len);
     cpu_physical_memory_write(*dst_sendcap_ptr, (void*)empty_sendcap_buf, (*dst_sendcap_len) * sizeof(Capability));
     g_free(empty_sendcap_buf);
     int i = 0;
@@ -403,7 +403,7 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
     cpu_physical_memory_write(dst_recvcap_addr + 8 * 3, (void*)dst_recvcap_online, 1);
     Capability* recv_cap_buf = g_new0(Capability, *dst_recvcap_len);
     cpu_physical_memory_read(*dst_recvcap_ptr, (void*)recv_cap_buf, (*dst_recvcap_len) * sizeof(Capability));
-    uint64_t* empty_recvcap_buf = g_new0(uint64_t, *dst_recvcap_len);
+    Capability* empty_recvcap_buf = g_new0(Capability, *dst_recvcap_len);
     cpu_physical_memory_write(*dst_recvcap_ptr, (void*)empty_recvcap_buf, (*dst_recvcap_len) * sizeof(Capability));
     g_free(empty_recvcap_buf);
     int i = 0;
