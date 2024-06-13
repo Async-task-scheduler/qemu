@@ -29,9 +29,15 @@
 #define SEND_INTR_OS_OP                 0x60                
 #define SEND_INTR_PROC_OP               0x68                
 #define SEND_INTR_TASK_OP               0x70                
+#define SWITCH_HYPERVISOR_OP            0x78
 
 #define TCB_ALIGN                       0x40
 #define READY_QUEUE_OFFSET              0x00
+#define READY_QUEUE_STRUCT_SIZE         0x20
+#define DEVICE_CAP_PTR_OFFSET           READY_QUEUE_OFFSET + READY_QUEUE_STRUCT_SIZE
+#define SEND_CAP_OFFSET                 DEVICE_CAP_PTR_OFFSET + 8
+#define SEND_CAP_STRUCT_SIZE            0x20
+#define RECV_CAP_OFFSET                 SEND_CAP_OFFSET + SEND_CAP_STRUCT_SIZE
 
 #define TYPE_RISCV_MOIC "riscv.moic"
 
@@ -76,6 +82,8 @@ typedef struct {
     TotalIdentity target;
 } Capability;
 
+void switch_device_cap(uint64_t src_task_id, uint64_t dst_task_id, Capability* device_cap);
+
 typedef QSIMPLEQ_HEAD(, CapQueueEntry) CapQueueHead;
 
 struct CapQueueEntry {
@@ -100,6 +108,12 @@ struct CapQueueEntry* cap_queue_remove(CapQueue* cap_queue,
     uint64_t target_task_id);
 
 bool is_device_cap(Capability* cap);
+
+uint64_t cap_queue_len(CapQueue* cap_queue);
+Capability* cap_queue_iter(CapQueue* cap_queue);
+
+void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue);
+void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue);
 
 typedef struct {
     uint64_t hypervisor_id;
