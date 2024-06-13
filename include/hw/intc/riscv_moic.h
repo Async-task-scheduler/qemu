@@ -38,6 +38,7 @@
 #define SEND_CAP_OFFSET                 DEVICE_CAP_PTR_OFFSET + 8
 #define SEND_CAP_STRUCT_SIZE            0x20
 #define RECV_CAP_OFFSET                 SEND_CAP_OFFSET + SEND_CAP_STRUCT_SIZE
+#define STATUS_OFFSET                   RECV_CAP_OFFSET + 8
 
 #define TYPE_RISCV_MOIC "riscv.moic"
 
@@ -111,9 +112,10 @@ bool is_device_cap(Capability* cap);
 
 uint64_t cap_queue_len(CapQueue* cap_queue);
 Capability* cap_queue_iter(CapQueue* cap_queue);
+uint64_t cap_queue_find(CapQueue* cap_queue, uint64_t target_os_id, uint64_t target_proc_id, uint64_t target_task_id);
 
 void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue);
-void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue);
+void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue, PriorityQueue* pq);
 
 typedef struct {
     uint64_t hypervisor_id;
@@ -126,6 +128,8 @@ typedef struct {
     Capability register_receiver_transaction;
     Capability register_sender_transaction;
 } MoicHart;
+
+int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, uint64_t exclude_idx);
 
 struct RISCVMOICState {
     /*< private >*/
