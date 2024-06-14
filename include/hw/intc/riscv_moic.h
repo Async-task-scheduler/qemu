@@ -142,6 +142,8 @@ struct RISCVMOICState {
     /* properties */
     uint32_t hart_count;
     uint32_t external_irq_count;
+    qemu_irq* usoft_irqs;
+    qemu_irq* ssoft_irqs;
 
 
     /* config */

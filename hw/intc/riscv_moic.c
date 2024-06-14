@@ -13,6 +13,7 @@
 #include "qemu/timer.h"
 #include "hw/intc/riscv_moic.h"
 #include "exec/cpu-common.h"
+#include "hw/irq.h"
 
 /******************* Utils ***************************************/
 
@@ -625,7 +626,11 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
                     assert(target_task_id == receiver_task);
                     uint64_t priority = (receiver_task >> 1) % MAX_PRIORITY;
                     pq_push(&moic->moicharts[online_idx].ready_queue, priority, receiver_task);
-                    // TODO: enable the task preempt
+                    // check whether the task is preemptible
+                    bool is_preempt = (receiver_task & 1) == 0;
+                    if (is_preempt) {
+                        qemu_irq_raise(moic->usoft_irqs[online_idx]);
+                    }
                     return;
                 }
             } else {    // receive process is not online, the os is online
@@ -639,7 +644,11 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
                 *status = 1;
                 cpu_physical_memory_write(target_tcb_status_addr, (void*)status, 8);
                 g_free(status);
-                // TODO: enable the process preempt
+                // check the receive process is preemptible.
+                bool is_preempt = (target_proc_id & 1) == 0;
+                if (is_preempt) {
+                    qemu_irq_raise(moic->ssoft_irqs[online_idx]);
+                }
             }
         } else {    // os is not online, the other harts run the hypervisor
             // TODO
@@ -690,12 +699,29 @@ static void riscv_moic_realize(DeviceState *dev, Error **errp)
     // init moic_hart
     uint32_t hart_count = moic->hart_count;
     moic->moicharts = g_new0(MoicHart, hart_count);
+    // create output irqs
+    moic->ssoft_irqs = g_malloc(sizeof(qemu_irq) * hart_count);
+    qdev_init_gpio_out(dev, moic->ssoft_irqs, hart_count);
+    moic->usoft_irqs = g_malloc(sizeof(qemu_irq) * hart_count);
+    qdev_init_gpio_out(dev, moic->usoft_irqs, hart_count);
+    
+
     int i = 0;
     for(i = 0; i < hart_count; i++) {
         pq_init(&moic->moicharts[i].ready_queue);
         cap_queue_init(&moic->moicharts[i].send_cap);
         cap_queue_init(&moic->moicharts[i].recv_cap);
         moic->moicharts[i].device_cap = g_new0(Capability, MAX_IRQ);
+        RISCVCPU *cpu = RISCV_CPU(qemu_get_cpu(i));
+        /* Claim software interrupt bits */
+        if (riscv_cpu_claim_interrupts(cpu, MIP_USIP) < 0) {
+            error_report("USIP already claimed");
+            exit(1);
+        }
+        if (riscv_cpu_claim_interrupts(cpu, MIP_SSIP) < 0) {
+            error_report("SSIP already claimed");
+            exit(1);
+        }
     }
 
 }
@@ -730,7 +756,12 @@ DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count, uint32_t extern
 
     sysbus_realize_and_unref(SYS_BUS_DEVICE(dev), &error_fatal);
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, addr);
-
+    int i = 0;
+    for (i = 0; i < hart_count; i++) {
+        CPUState *cpu = qemu_get_cpu(i);
+        qdev_connect_gpio_out(dev, i, qdev_get_gpio_in(DEVICE(cpu), IRQ_S_SOFT));
+        qdev_connect_gpio_out(dev, i + hart_count, qdev_get_gpio_in(DEVICE(cpu), IRQ_U_SOFT));
+    }
 
     return dev;
 }
