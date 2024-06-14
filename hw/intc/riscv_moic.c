@@ -445,7 +445,7 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
 
 // If os is not online, return -1
 // If os is online, but the receive process is not online, or the receive process is online, return the index
-int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, uint64_t exclude_idx) {
+int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, int64_t exclude_idx) {
     int i = 0;
     int os_idx = -1;
     int proc_idx = -1;
@@ -462,6 +462,15 @@ int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, u
         }
     }
     return os_idx;
+}
+
+void modify_task_status(uint64_t target_task_id) {
+    uint64_t target_tcb = target_task_id & (~(TCB_ALIGN - 1));
+    uint64_t target_tcb_status_addr = target_tcb + STATUS_OFFSET;
+    uint64_t* status = g_new0(uint64_t, 1);
+    *status = 1;
+    cpu_physical_memory_write(target_tcb_status_addr, (void*)status, 8);
+    g_free(status);
 }
 
 /**********************************************************/
@@ -523,20 +532,23 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
                 return;
             } 
             // os -> hypervisor
-            moic->moicharts[idx].current.proc_id = 0;
             switch_ready_queue(src_task_id, dst_task_id, &moic->moicharts[idx].ready_queue);
             switch_device_cap(src_task_id, dst_task_id, moic->moicharts[idx].device_cap);
             switch_send_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].send_cap);
             switch_recv_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].recv_cap, &moic->moicharts[idx].ready_queue);
+            moic->moicharts[idx].current.os_id = 0;
+            moic->moicharts[idx].current.proc_id = 0;
+            moic->moicharts[idx].current.task_id = 0;
         } else if (value != 0) {
             // hypervisor -> os | non -> os
-            moic->moicharts[idx].current.proc_id = 0;
             uint64_t src_task_id = moic->moicharts[idx].hypervisor_id;
             uint64_t dst_task_id = moic->moicharts[idx].current.os_id = value;
             switch_ready_queue(src_task_id, dst_task_id, &moic->moicharts[idx].ready_queue);
             switch_device_cap(src_task_id, dst_task_id, moic->moicharts[idx].device_cap);
             switch_send_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].send_cap);
             switch_recv_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].recv_cap, &moic->moicharts[idx].ready_queue);
+            moic->moicharts[idx].current.proc_id = 0;
+            moic->moicharts[idx].current.task_id = 0;
         }
     } else if (op == SWITCH_PROC_OP) {
         if (value == 0 && moic->moicharts[idx].current.os_id != 0) {
@@ -550,6 +562,8 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
             switch_device_cap(src_task_id, dst_task_id, moic->moicharts[idx].device_cap);
             switch_send_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].send_cap);
             switch_recv_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].recv_cap, &moic->moicharts[idx].ready_queue);
+            moic->moicharts[idx].current.proc_id = 0;
+            moic->moicharts[idx].current.task_id = 0;
         } else if (value != 0 && moic->moicharts[idx].current.os_id != 0) {
             // switch to process
             uint64_t src_task_id = moic->moicharts[idx].current.os_id;
@@ -558,6 +572,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
             switch_device_cap(src_task_id, dst_task_id, moic->moicharts[idx].device_cap);
             switch_send_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].send_cap);
             switch_recv_cap_queue(src_task_id, dst_task_id, &moic->moicharts[idx].recv_cap, &moic->moicharts[idx].ready_queue);
+            moic->moicharts[idx].current.task_id = 0;
         }
     } else if (op == REGISTER_RECV_TASK_OP) {
         moic->moicharts[idx].register_receiver_transaction.task_id = value;
@@ -616,7 +631,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
         }
         // check whether the receiver is online
         uint32_t hart_count = moic->hart_count;
-        int64_t online_idx = check_online(moic->moicharts, hart_count, target_os_id, target_proc_id, idx);
+        int64_t online_idx = check_online(moic->moicharts, hart_count, target_os_id, target_proc_id, -1);
         if (online_idx >= 0 && online_idx < hart_count) {
             if (moic->moicharts[online_idx].current.proc_id == target_proc_id) {    // receive process is online
                 uint64_t sender_os_id = moic->moicharts[idx].current.os_id;
@@ -629,7 +644,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
                     // check whether the task is preemptible
                     bool is_preempt = (receiver_task & 1) == 0;
                     if (is_preempt) {
-                        qemu_irq_raise(moic->usoft_irqs[online_idx]);
+                        qemu_irq_pulse(moic->usoft_irqs[online_idx]);
                     }
                     return;
                 }
@@ -638,22 +653,35 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
                 uint64_t priority = (target_proc_id >> 1) % MAX_PRIORITY;
                 pq_push(&moic->moicharts[online_idx].ready_queue, priority, target_proc_id);
                 // The target task is in the recv_cap. So just modify the target task status.
-                uint64_t target_tcb = target_task_id & (~(TCB_ALIGN - 1));
-                uint64_t target_tcb_status_addr = target_tcb + STATUS_OFFSET;
-                uint64_t* status = g_new0(uint64_t, 1);
-                *status = 1;
-                cpu_physical_memory_write(target_tcb_status_addr, (void*)status, 8);
-                g_free(status);
+                modify_task_status(target_task_id);
                 // check the receive process is preemptible.
                 bool is_preempt = (target_proc_id & 1) == 0;
                 if (is_preempt) {
-                    qemu_irq_raise(moic->ssoft_irqs[online_idx]);
+                    qemu_irq_pulse(moic->ssoft_irqs[online_idx]);
                 }
             }
-        } else {    // os is not online, the other harts run the hypervisor
-            // TODO
-            // wake the os
-
+        } else {    
+            // the receive process is in another os and that os is not online, the other harts run the hypervisor
+            // assume that all harts are run on the same hypervisor
+            // wake the os and modify the status of process and task
+            // check whether the hypervisor is online
+            int i = 0, target_idx = -1;
+            for (i = 0; i < hart_count; i++) {
+                if ((i != idx) && moic->moicharts[i].current.os_id == 0) {
+                    target_idx = i;
+                    break;
+                }
+            }
+            if (target_idx < 0) { // hypervisor is not online
+                return;
+            }
+            // wake the target os
+            uint64_t priority = (target_os_id >> 1) % MAX_PRIORITY;
+            pq_push(&moic->moicharts[target_idx].ready_queue, priority, target_os_id);
+            // modify process status
+            modify_task_status(target_proc_id);
+            // modify task status
+            modify_task_status(target_task_id);
         }
     } else {
         error_report("Operation is not supported");

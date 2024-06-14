@@ -129,7 +129,8 @@ typedef struct {
     Capability register_sender_transaction;
 } MoicHart;
 
-int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, uint64_t exclude_idx);
+int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, int64_t exclude_idx);
+void modify_task_status(uint64_t target_task_id);
 
 struct RISCVMOICState {
     /*< private >*/
