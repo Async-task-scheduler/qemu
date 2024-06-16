@@ -31,6 +31,14 @@
 #define SEND_INTR_TASK_OP               0x70                
 #define SWITCH_HYPERVISOR_OP            0x78
 #define CURRENT_OP                      0x80
+#define REMOVE_OP                       0x88
+#define CAUSE_OP                        0x90
+#define DUMP_OP                         0x98
+
+typedef enum {
+    PREEMPT = 0,
+    KILL = 1,
+} Cause;
 
 #define TCB_ALIGN                       0x40
 #define READY_QUEUE_OFFSET              0x00
@@ -71,6 +79,7 @@ uint64_t pq_pop(PriorityQueue* pq);
 bool pq_is_empty(PriorityQueue* pq);
 uint64_t pq_len(PriorityQueue* pq);
 uint64_t* pq_iter(PriorityQueue* pq);
+void pq_remove(PriorityQueue* pq, uint64_t task_id);
 void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueue* pq);
 
 typedef struct {
@@ -110,10 +119,12 @@ struct CapQueueEntry* cap_queue_remove(CapQueue* cap_queue,
     uint64_t target_task_id);
 
 bool is_device_cap(Capability* cap);
+void device_cap_logout(Capability* cap, uint64_t task_id);
 
 uint64_t cap_queue_len(CapQueue* cap_queue);
 Capability* cap_queue_iter(CapQueue* cap_queue);
 uint64_t cap_queue_find(CapQueue* cap_queue, uint64_t target_os_id, uint64_t target_proc_id, uint64_t target_task_id);
+void cap_queue_logout(CapQueue* cap_queue, uint64_t task_id);
 
 void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue);
 void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue, PriorityQueue* pq);
@@ -128,6 +139,7 @@ typedef struct {
     TotalIdentity send_intr_transaction;
     Capability register_receiver_transaction;
     Capability register_sender_transaction;
+    Cause cause;
 } MoicHart;
 
 int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, int64_t exclude_idx);

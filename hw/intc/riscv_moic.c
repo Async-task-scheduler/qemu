@@ -118,6 +118,19 @@ uint64_t* pq_iter(PriorityQueue* pq) {
     return task_buf;
 }
 
+void pq_remove(PriorityQueue* pq, uint64_t task_id) {
+    uint64_t priority = (task_id >> 1) % MAX_PRIORITY;
+    QueueHead *head = &pq->task_queues[priority].head;
+    struct QueueEntry* cur, *next_elem;
+    QSIMPLEQ_FOREACH_SAFE(cur, head, next, next_elem) {
+        if (cur->data == task_id) {
+            QSIMPLEQ_REMOVE(head, cur, QueueEntry, next);
+            g_free(cur);
+        }
+    }
+    return;
+}
+
 // load the ready tasks in the hardware into the src_task
 // load the ready tasks of dst_task in the memory into the hardware.
 void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueue* pq) {
@@ -252,8 +265,31 @@ struct CapQueueEntry* cap_queue_remove(CapQueue* cap_queue,
     return NULL;
 }
 
+// Logout the capability
+void cap_queue_logout(CapQueue* cap_queue, uint64_t task_id) {
+    CapQueueHead* head = &cap_queue->head;
+    struct CapQueueEntry* cur, *next_elem;
+    QSIMPLEQ_FOREACH_SAFE(cur, head, next, next_elem) {
+        if (cur->cap.task_id == task_id) {
+            QSIMPLEQ_REMOVE(head, cur, CapQueueEntry, next);
+            g_free(cur);
+        }
+    }
+    return;
+}
+
 bool is_device_cap(Capability* cap) {
     return (cap->target.os_id == 0) && (cap->target.proc_id == 0);
+}
+
+void device_cap_logout(Capability* cap, uint64_t task_id) {
+    int i = 0;
+    for (i = 0; i < MAX_IRQ; i ++) {
+        if (cap[i].task_id == task_id) {
+            cap[i].task_id = 0;
+        }
+    }
+    return;
 }
 
 uint64_t cap_queue_len(CapQueue* cap_queue) {
@@ -511,6 +547,8 @@ static uint64_t riscv_moic_read(void *opaque, hwaddr addr, unsigned size) {
         }
         uint64_t hypervisor_id =  moic->moicharts[idx].hypervisor_id;
         return hypervisor_id;
+    } else if (op == CAUSE_OP) {
+        return moic->moicharts[idx].cause;
     } else {
         error_report("Operation is not supported");
     }
@@ -656,19 +694,28 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
                     bool is_preempt = (receiver_task & 1) == 0;
                     if (is_preempt) {
                         qemu_irq_pulse(moic->usoft_irqs[online_idx]);
+                        moic->moicharts[online_idx].cause = PREEMPT;
                     }
                     return;
                 }
             } else {    // receive process is not online, the os is online
                 // wake the receive process 
-                uint64_t priority = (target_proc_id >> 1) % MAX_PRIORITY;
-                pq_push(&moic->moicharts[online_idx].ready_queue, priority, target_proc_id);
-                // The target task is in the recv_cap. So just modify the target task status.
-                modify_task_status(target_task_id);
-                // check the receive process is preemptible.
-                bool is_preempt = (target_proc_id & 1) == 0;
-                if (is_preempt) {
-                    qemu_irq_pulse(moic->ssoft_irqs[online_idx]);
+                uint64_t sender_os_id = moic->moicharts[idx].current.os_id;
+                uint64_t sender_proc_id = moic->moicharts[idx].current.proc_id;
+                // os need to retain the send/recv process.
+                uint64_t receiver_process = cap_queue_find(&moic->moicharts[online_idx].recv_cap, sender_os_id, sender_proc_id, 0);
+                if (receiver_process != 0) {
+                    assert(receiver_process == target_proc_id);
+                    uint64_t priority = (target_proc_id >> 1) % MAX_PRIORITY;
+                    pq_push(&moic->moicharts[online_idx].ready_queue, priority, target_proc_id);
+                    // The target task is in the recv_cap. So just modify the target task status.
+                    modify_task_status(target_task_id);
+                    // check the receive process is preemptible.
+                    bool is_preempt = (target_proc_id & 1) == 0;
+                    if (is_preempt) {
+                        qemu_irq_pulse(moic->ssoft_irqs[online_idx]);
+                        moic->moicharts[online_idx].cause = PREEMPT;
+                    }
                 }
             }
         } else {    
@@ -693,6 +740,48 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
             modify_task_status(target_proc_id);
             // modify task status
             modify_task_status(target_task_id);
+        }
+    } else if (op == REMOVE_OP) {
+        // remove the target task
+        if (value != 0) {
+            pq_remove(&moic->moicharts[idx].ready_queue, value);
+            cap_queue_logout(&moic->moicharts[idx].send_cap, value);
+            cap_queue_logout(&moic->moicharts[idx].recv_cap, value);
+            device_cap_logout(moic->moicharts[idx].device_cap, value);
+            // check whether the task is running on the other hart. No matter the task is os/process/normal task.
+            int i = 0;
+            for (i = 0; i < moic->hart_count; i++) {
+                if ((i != idx)) {
+                    uint64_t proc_id = moic->moicharts[i].current.proc_id;
+                    uint64_t task_id = moic->moicharts[i].current.task_id;
+                    if (task_id == value) {     // normal task run on the other hart, send user interrupt
+                        qemu_irq_pulse(moic->usoft_irqs[i]);
+                        moic->moicharts[i].cause = KILL;
+                    } else if (proc_id == value) {  // process run on the other hart, send supervisor interrupt
+                        qemu_irq_pulse(moic->ssoft_irqs[i]);
+                        moic->moicharts[i].cause = KILL;
+                    }
+                    // not supported os, because of privilege level
+                }
+            }
+        }
+    }  else if (op == DUMP_OP) {
+        if (value != 0) {
+            uint64_t ptr = value;
+            uint64_t hypervisor_id = moic->moicharts[idx].hypervisor_id;
+            uint64_t current_os_id = moic->moicharts[idx].current.os_id;
+            uint64_t current_proc_id = moic->moicharts[idx].current.proc_id;
+            uint64_t current_task_id = moic->moicharts[idx].current.task_id;
+            uint64_t rq_len = pq_len(&moic->moicharts[idx].ready_queue);
+            uint64_t send_cap_len = cap_queue_len(&moic->moicharts[idx].send_cap);
+            uint64_t recv_cap_len = cap_queue_len(&moic->moicharts[idx].recv_cap);
+            cpu_physical_memory_write(ptr + 8 * 0, (void*)&hypervisor_id, 8);
+            cpu_physical_memory_write(ptr + 8 * 1, (void*)&current_os_id, 8);
+            cpu_physical_memory_write(ptr + 8 * 2, (void*)&current_proc_id, 8);
+            cpu_physical_memory_write(ptr + 8 * 3, (void*)&current_task_id, 8);
+            cpu_physical_memory_write(ptr + 8 * 4, (void*)&rq_len, 8);
+            cpu_physical_memory_write(ptr + 8 * 5, (void*)&send_cap_len, 8);
+            cpu_physical_memory_write(ptr + 8 * 6, (void*)&recv_cap_len, 8);
         }
     } else {
         error_report("Operation is not supported");
