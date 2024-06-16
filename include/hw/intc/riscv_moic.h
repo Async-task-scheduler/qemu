@@ -30,6 +30,7 @@
 #define SEND_INTR_PROC_OP               0x68                
 #define SEND_INTR_TASK_OP               0x70                
 #define SWITCH_HYPERVISOR_OP            0x78
+#define CURRENT_OP                      0x80
 
 #define TCB_ALIGN                       0x40
 #define READY_QUEUE_OFFSET              0x00

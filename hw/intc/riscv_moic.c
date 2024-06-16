@@ -131,12 +131,12 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
             uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
             uint64_t src_rq_addr = src_tcb + READY_QUEUE_OFFSET;
             uint64_t* src_rq_cap = g_new0(uint64_t, 1);
-            cpu_physical_memory_read(src_rq_addr + 8 * 2, (void*)src_rq_cap, 8);
+            cpu_physical_memory_read(src_rq_addr, (void*)src_rq_cap, 8);
             assert(len < *src_rq_cap);
             g_free(src_rq_cap);
             // read the ready queue pointer
             uint64_t* src_rq_ptr = g_new0(uint64_t, 1);
-            cpu_physical_memory_read(src_rq_addr, (void*)src_rq_ptr, 8);
+            cpu_physical_memory_read(src_rq_addr + 8 * 1, (void*)src_rq_ptr, 8);
             // info_report("src_rq_ptr: 0x%lx", *src_rq_ptr);
             cpu_physical_memory_write(*src_rq_ptr, (void*)src_task_buf, len * 8);
             g_free(src_rq_ptr);
@@ -144,7 +144,7 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
             uint64_t* src_rq_len = g_new0(uint64_t, 1);
             *src_rq_len = len;
             // info_report("src_rq_len: 0x%lx", *src_rq_len);
-            cpu_physical_memory_write(src_rq_addr + 8 * 1, (void*)src_rq_len, 8);
+            cpu_physical_memory_write(src_rq_addr + 8 * 2, (void*)src_rq_len, 8);
             g_free(src_rq_len);
             bool* src_rq_online = g_new0(bool, 1);
             *src_rq_online = false;
@@ -156,13 +156,13 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
     uint64_t dst_tcb = dst_task_id & (~(TCB_ALIGN - 1));
     uint64_t dst_rq_addr = dst_tcb + READY_QUEUE_OFFSET;
     uint64_t* dst_rq_ptr = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_rq_addr, (void*)dst_rq_ptr, 8);
+    cpu_physical_memory_read(dst_rq_addr + 8 * 1, (void*)dst_rq_ptr, 8);
     // info_report("dst_rq_ptr: 0x%lx", *dst_rq_ptr);
     uint64_t* dst_rq_len = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_rq_addr + 8 * 1, (void*)dst_rq_len, 8);
+    cpu_physical_memory_read(dst_rq_addr + 8 * 2, (void*)dst_rq_len, 8);
     // info_report("dst_rq_len: 0x%lx", *dst_rq_len);
     uint64_t* dst_rq_cap = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_rq_addr + 8 * 2, (void*)dst_rq_cap, 8);
+    cpu_physical_memory_read(dst_rq_addr, (void*)dst_rq_cap, 8);
     // info_report("dst_rq_cap: 0x%lx", *dst_rq_cap);
     bool* dst_rq_online = g_new0(bool, 1);
     // info_report("dst_rq_online: %d", *dst_rq_online);
@@ -307,12 +307,12 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
             uint64_t src_sendcap_addr = src_tcb + SEND_CAP_OFFSET;
             uint64_t* src_sendcap_cap = g_new0(uint64_t, 1);
-            cpu_physical_memory_read(src_sendcap_addr + 8 * 2, (void*)src_sendcap_cap, 8);
+            cpu_physical_memory_read(src_sendcap_addr, (void*)src_sendcap_cap, 8);
             assert(len < *src_sendcap_cap);
             g_free(src_sendcap_cap);
             // read the ready queue pointer
             uint64_t* src_sendcap_ptr = g_new0(uint64_t, 1);
-            cpu_physical_memory_read(src_sendcap_addr, (void*)src_sendcap_ptr, 8);
+            cpu_physical_memory_read(src_sendcap_addr + 8 * 1, (void*)src_sendcap_ptr, 8);
             // info_report("src_sendcap_ptr: 0x%lx", *src_sendcap_ptr);
             cpu_physical_memory_write(*src_sendcap_ptr, (void*)src_cap_buf, len * sizeof(Capability));
             g_free(src_sendcap_ptr);
@@ -320,7 +320,7 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             uint64_t* src_sendcap_len = g_new0(uint64_t, 1);
             *src_sendcap_len = len;
             // info_report("src_sendcap_len: 0x%lx", *src_sendcap_len);
-            cpu_physical_memory_write(src_sendcap_addr + 8 * 1, (void*)src_sendcap_len, 8);
+            cpu_physical_memory_write(src_sendcap_addr + 8 * 2, (void*)src_sendcap_len, 8);
             g_free(src_sendcap_len);
             bool* src_sendcap_online = g_new0(bool, 1);
             *src_sendcap_online = false;
@@ -332,13 +332,13 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
     uint64_t dst_tcb = dst_task_id & (~(TCB_ALIGN - 1));
     uint64_t dst_sendcap_addr = dst_tcb + SEND_CAP_OFFSET;
     uint64_t* dst_sendcap_ptr = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_sendcap_addr, (void*)dst_sendcap_ptr, 8);
+    cpu_physical_memory_read(dst_sendcap_addr + 8 * 1, (void*)dst_sendcap_ptr, 8);
     // info_report("dst_sendcap_ptr: 0x%lx", *dst_sendcap_ptr);
     uint64_t* dst_sendcap_len = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_sendcap_addr + 8 * 1, (void*)dst_sendcap_len, 8);
+    cpu_physical_memory_read(dst_sendcap_addr + 8 * 2, (void*)dst_sendcap_len, 8);
     // info_report("dst_sendcap_len: 0x%lx", *dst_sendcap_len);
     uint64_t* dst_sendcap_cap = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_sendcap_addr + 8 * 2, (void*)dst_sendcap_cap, 8);
+    cpu_physical_memory_read(dst_sendcap_addr, (void*)dst_sendcap_cap, 8);
     // info_report("dst_sendcap_cap: 0x%lx", *dst_sendcap_cap);
     bool* dst_sendcap_online = g_new0(bool, 1);
     // info_report("dst_sendcap_online: %d", *dst_sendcap_online);
@@ -376,20 +376,20 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
             uint64_t src_recvcap_addr = src_tcb + RECV_CAP_OFFSET;
             uint64_t* src_recvcap_cap = g_new0(uint64_t, 1);
-            cpu_physical_memory_read(src_recvcap_addr + 8 * 2, (void*)src_recvcap_cap, 8);
+            cpu_physical_memory_read(src_recvcap_addr, (void*)src_recvcap_cap, 8);
             assert(len < *src_recvcap_cap);
             g_free(src_recvcap_cap);
             // read the ready queue pointer
             uint64_t* src_recvcap_ptr = g_new0(uint64_t, 1);
-            cpu_physical_memory_read(src_recvcap_addr, (void*)src_recvcap_ptr, 8);
+            cpu_physical_memory_read(src_recvcap_addr + 8 * 1, (void*)src_recvcap_ptr, 8);
             // info_report("src_recvcap_ptr: 0x%lx", *src_recvcap_ptr);
             cpu_physical_memory_write(*src_recvcap_ptr, (void*)src_cap_buf, len * sizeof(Capability));
             g_free(src_recvcap_ptr);
             g_free(src_cap_buf);
             uint64_t* src_recvcap_len = g_new0(uint64_t, 1);
             *src_recvcap_len = len;
-            info_report("src_recvcap_len: 0x%lx", *src_recvcap_len);
-            cpu_physical_memory_write(src_recvcap_addr + 8 * 1, (void*)src_recvcap_len, 8);
+            // info_report("src_recvcap_len: 0x%lx", *src_recvcap_len);
+            cpu_physical_memory_write(src_recvcap_addr + 8 * 2, (void*)src_recvcap_len, 8);
             g_free(src_recvcap_len);
             bool* src_recvcap_online = g_new0(bool, 1);
             *src_recvcap_online = false;
@@ -401,13 +401,13 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
     uint64_t dst_tcb = dst_task_id & (~(TCB_ALIGN - 1));
     uint64_t dst_recvcap_addr = dst_tcb + RECV_CAP_OFFSET;
     uint64_t* dst_recvcap_ptr = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_recvcap_addr, (void*)dst_recvcap_ptr, 8);
+    cpu_physical_memory_read(dst_recvcap_addr + 8 * 1, (void*)dst_recvcap_ptr, 8);
     // info_report("dst_recvcap_ptr: 0x%lx", *dst_recvcap_ptr);
     uint64_t* dst_recvcap_len = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_recvcap_addr + 8 * 1, (void*)dst_recvcap_len, 8);
+    cpu_physical_memory_read(dst_recvcap_addr + 8 * 2, (void*)dst_recvcap_len, 8);
     // info_report("dst_recvcap_len: 0x%lx", *dst_recvcap_len);
     uint64_t* dst_recvcap_cap = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_recvcap_addr + 8 * 2, (void*)dst_recvcap_cap, 8);
+    cpu_physical_memory_read(dst_recvcap_addr, (void*)dst_recvcap_cap, 8);
     // info_report("dst_recvcap_cap: 0x%lx", *dst_recvcap_cap);
     bool* dst_recvcap_online = g_new0(bool, 1);
     // info_report("dst_recvcap_online: %d", *dst_recvcap_online);
@@ -500,6 +500,17 @@ static uint64_t riscv_moic_read(void *opaque, hwaddr addr, unsigned size) {
                 }
             }
         }
+    } else if (op == CURRENT_OP) {
+        uint64_t proc_id =  moic->moicharts[idx].current.proc_id;
+        if (proc_id != 0) {
+            return proc_id;
+        }
+        uint64_t os_id =  moic->moicharts[idx].current.os_id;
+        if (os_id != 0) {
+            return os_id;
+        }
+        uint64_t hypervisor_id =  moic->moicharts[idx].hypervisor_id;
+        return hypervisor_id;
     } else {
         error_report("Operation is not supported");
     }
