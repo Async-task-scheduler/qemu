@@ -146,6 +146,11 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
         *src_rq_online = false;
         cpu_physical_memory_write(src_rq_addr + 8 * 3, (void*)src_rq_online, 1);
         g_free(src_rq_online);  
+        uint64_t* src_rq_len = g_new0(uint64_t, 1);
+        *src_rq_len = len;
+        // info_report("src_rq_len: 0x%lx", *src_rq_len);
+        cpu_physical_memory_write(src_rq_addr + 8 * 2, (void*)src_rq_len, 8);
+        g_free(src_rq_len);
         if (src_task_buf != NULL) {
             // checkout tasks of the src_task
             uint64_t* src_rq_cap = g_new0(uint64_t, 1);
@@ -159,11 +164,6 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
             cpu_physical_memory_write(*src_rq_ptr, (void*)src_task_buf, len * 8);
             g_free(src_rq_ptr);
             g_free(src_task_buf);
-            uint64_t* src_rq_len = g_new0(uint64_t, 1);
-            *src_rq_len = len;
-            // info_report("src_rq_len: 0x%lx", *src_rq_len);
-            cpu_physical_memory_write(src_rq_addr + 8 * 2, (void*)src_rq_len, 8);
-            g_free(src_rq_len);
         }
     }
     // load the ready tasks of dst_task from the memory.
@@ -346,7 +346,12 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
         bool* src_sendcap_online = g_new0(bool, 1);
         *src_sendcap_online = false;
         cpu_physical_memory_write(src_sendcap_addr + 8 * 3, (void*)src_sendcap_online, 1);
-        g_free(src_sendcap_online);        
+        g_free(src_sendcap_online); 
+        uint64_t* src_sendcap_len = g_new0(uint64_t, 1);
+        *src_sendcap_len = len;
+        // info_report("src_sendcap_len: 0x%lx", *src_sendcap_len);
+        cpu_physical_memory_write(src_sendcap_addr + 8 * 2, (void*)src_sendcap_len, 8);
+        g_free(src_sendcap_len);       
         if (src_cap_buf != NULL) {
             // checkout tasks of the src_task
             uint64_t* src_sendcap_cap = g_new0(uint64_t, 1);
@@ -360,11 +365,6 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             cpu_physical_memory_write(*src_sendcap_ptr, (void*)src_cap_buf, len * sizeof(Capability));
             g_free(src_sendcap_ptr);
             g_free(src_cap_buf);
-            uint64_t* src_sendcap_len = g_new0(uint64_t, 1);
-            *src_sendcap_len = len;
-            // info_report("src_sendcap_len: 0x%lx", *src_sendcap_len);
-            cpu_physical_memory_write(src_sendcap_addr + 8 * 2, (void*)src_sendcap_len, 8);
-            g_free(src_sendcap_len);
         }
     }
     // load the ready tasks of dst_task from the memory.
@@ -415,7 +415,12 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
         bool* src_recvcap_online = g_new0(bool, 1);
         *src_recvcap_online = false;
         cpu_physical_memory_write(src_recvcap_addr + 8 * 3, (void*)src_recvcap_online, 1);
-        g_free(src_recvcap_online);       
+        g_free(src_recvcap_online);   
+        uint64_t* src_recvcap_len = g_new0(uint64_t, 1);
+        *src_recvcap_len = len;
+        // info_report("src_recvcap_len: 0x%lx", *src_recvcap_len);
+        cpu_physical_memory_write(src_recvcap_addr + 8 * 2, (void*)src_recvcap_len, 8);
+        g_free(src_recvcap_len);     
         if (src_cap_buf != NULL) {
             // checkout tasks of the src_task
             uint64_t* src_recvcap_cap = g_new0(uint64_t, 1);
@@ -429,11 +434,6 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             cpu_physical_memory_write(*src_recvcap_ptr, (void*)src_cap_buf, len * sizeof(Capability));
             g_free(src_recvcap_ptr);
             g_free(src_cap_buf);
-            uint64_t* src_recvcap_len = g_new0(uint64_t, 1);
-            *src_recvcap_len = len;
-            // info_report("src_recvcap_len: 0x%lx", *src_recvcap_len);
-            cpu_physical_memory_write(src_recvcap_addr + 8 * 2, (void*)src_recvcap_len, 8);
-            g_free(src_recvcap_len); 
         }
     }
     // load the ready tasks of dst_task from the memory.
