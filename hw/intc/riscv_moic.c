@@ -338,10 +338,14 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
     if (src_task_id == 0) {
         g_free(src_cap_buf);
     } else {
+        uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
+        uint64_t src_sendcap_addr = src_tcb + SEND_CAP_OFFSET;
+        bool* src_sendcap_online = g_new0(bool, 1);
+        *src_sendcap_online = false;
+        cpu_physical_memory_write(src_sendcap_addr + 8 * 3, (void*)src_sendcap_online, 1);
+        g_free(src_sendcap_online);        
         if (src_cap_buf != NULL) {
             // checkout tasks of the src_task
-            uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
-            uint64_t src_sendcap_addr = src_tcb + SEND_CAP_OFFSET;
             uint64_t* src_sendcap_cap = g_new0(uint64_t, 1);
             cpu_physical_memory_read(src_sendcap_addr, (void*)src_sendcap_cap, 8);
             assert(len < *src_sendcap_cap);
@@ -358,10 +362,6 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             // info_report("src_sendcap_len: 0x%lx", *src_sendcap_len);
             cpu_physical_memory_write(src_sendcap_addr + 8 * 2, (void*)src_sendcap_len, 8);
             g_free(src_sendcap_len);
-            bool* src_sendcap_online = g_new0(bool, 1);
-            *src_sendcap_online = false;
-            cpu_physical_memory_write(src_sendcap_addr + 8 * 3, (void*)src_sendcap_online, 1);
-            g_free(src_sendcap_online);        
         }
     }
     // load the ready tasks of dst_task from the memory.
@@ -407,10 +407,14 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
     if (src_task_id == 0) {
         g_free(src_cap_buf);
     } else {
+        uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
+        uint64_t src_recvcap_addr = src_tcb + RECV_CAP_OFFSET;
+        bool* src_recvcap_online = g_new0(bool, 1);
+        *src_recvcap_online = false;
+        cpu_physical_memory_write(src_recvcap_addr + 8 * 3, (void*)src_recvcap_online, 1);
+        g_free(src_recvcap_online);       
         if (src_cap_buf != NULL) {
             // checkout tasks of the src_task
-            uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
-            uint64_t src_recvcap_addr = src_tcb + RECV_CAP_OFFSET;
             uint64_t* src_recvcap_cap = g_new0(uint64_t, 1);
             cpu_physical_memory_read(src_recvcap_addr, (void*)src_recvcap_cap, 8);
             assert(len < *src_recvcap_cap);
@@ -426,11 +430,7 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             *src_recvcap_len = len;
             // info_report("src_recvcap_len: 0x%lx", *src_recvcap_len);
             cpu_physical_memory_write(src_recvcap_addr + 8 * 2, (void*)src_recvcap_len, 8);
-            g_free(src_recvcap_len);
-            bool* src_recvcap_online = g_new0(bool, 1);
-            *src_recvcap_online = false;
-            cpu_physical_memory_write(src_recvcap_addr + 8 * 3, (void*)src_recvcap_online, 1);
-            g_free(src_recvcap_online);        
+            g_free(src_recvcap_len); 
         }
     }
     // load the ready tasks of dst_task from the memory.
