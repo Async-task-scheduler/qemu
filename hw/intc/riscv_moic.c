@@ -33,8 +33,8 @@ uint64_t queue_pop(Queue* queue) {
     if (head->sqh_first != NULL) {
         struct QueueEntry *entry = head->sqh_first;
         res = entry->data;
-        g_free(entry);
         QSIMPLEQ_REMOVE_HEAD(head, next);
+        g_free(entry);
         return res;
     }
     return res;
@@ -62,8 +62,8 @@ uint64_t pq_pop(PriorityQueue* pq) {
         if (head->sqh_first != NULL) {
             struct QueueEntry *task_entry = head->sqh_first;
             res = task_entry->data;
-            g_free(task_entry);
             QSIMPLEQ_REMOVE_HEAD(head, next);
+            g_free(task_entry);
             return res;
         }
     }
@@ -109,10 +109,10 @@ uint64_t* pq_iter(PriorityQueue* pq) {
         struct QueueEntry* cur, *next_elem;
         QSIMPLEQ_FOREACH_SAFE(cur, head, next, next_elem) {
             task_buf[j] = cur->data;
-            // info_report("pq iter, task: 0x%lx", cur->data);
+            // info_report("pq iter, task%d: 0x%lx", j, cur->data);
             j += 1;
-            g_free(cur);
             QSIMPLEQ_REMOVE_HEAD(head, next);
+            g_free(cur);
         }
     }
     return task_buf;
@@ -136,16 +136,21 @@ void pq_remove(PriorityQueue* pq, uint64_t task_id) {
 void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueue* pq) {
     uint64_t len = pq_len(pq);
     uint64_t* src_task_buf = pq_iter(pq);
+    pq_init(pq);
     if (src_task_id == 0) {
         g_free(src_task_buf);
     } else {
+        uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
+        uint64_t src_rq_addr = src_tcb + READY_QUEUE_OFFSET;
+        bool* src_rq_online = g_new0(bool, 1);
+        *src_rq_online = false;
+        cpu_physical_memory_write(src_rq_addr + 8 * 3, (void*)src_rq_online, 1);
+        g_free(src_rq_online);  
         if (src_task_buf != NULL) {
             // checkout tasks of the src_task
-            uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
-            uint64_t src_rq_addr = src_tcb + READY_QUEUE_OFFSET;
             uint64_t* src_rq_cap = g_new0(uint64_t, 1);
             cpu_physical_memory_read(src_rq_addr, (void*)src_rq_cap, 8);
-            assert(len < *src_rq_cap);
+            assert(len <= *src_rq_cap);
             g_free(src_rq_cap);
             // read the ready queue pointer
             uint64_t* src_rq_ptr = g_new0(uint64_t, 1);
@@ -159,10 +164,6 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
             // info_report("src_rq_len: 0x%lx", *src_rq_len);
             cpu_physical_memory_write(src_rq_addr + 8 * 2, (void*)src_rq_len, 8);
             g_free(src_rq_len);
-            bool* src_rq_online = g_new0(bool, 1);
-            *src_rq_online = false;
-            cpu_physical_memory_write(src_rq_addr + 8 * 3, (void*)src_rq_online, 1);
-            g_free(src_rq_online);        
         }
     }
     // load the ready tasks of dst_task from the memory.
@@ -183,16 +184,18 @@ void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueu
     *dst_rq_online = true;
     cpu_physical_memory_write(dst_rq_addr + 8 * 3, (void*)dst_rq_online, 1);
     uint64_t* task_buf = g_new0(uint64_t, *dst_rq_len);
-    cpu_physical_memory_read(*dst_rq_ptr, (void*)task_buf, (*dst_rq_len) * 8);
-    uint64_t* empty_task_buf = g_new0(uint64_t, *dst_rq_len);
-    cpu_physical_memory_write(*dst_rq_ptr, (void*)empty_task_buf, (*dst_rq_len) * 8);
-    g_free(empty_task_buf);
-    int i = 0;
-    for (i = 0; i < *dst_rq_len; i++) {
-        uint64_t task_id = task_buf[i];
-        // info_report("task_id: 0x%lx", task_id);
-        uint64_t priority = (task_id >> 1) % MAX_PRIORITY;
-        pq_push(pq, priority, task_id);
+    if (task_buf != NULL) {
+        cpu_physical_memory_read(*dst_rq_ptr, (void*)task_buf, (*dst_rq_len) * 8);
+        uint64_t* empty_task_buf = g_new0(uint64_t, *dst_rq_len);
+        cpu_physical_memory_write(*dst_rq_ptr, (void*)empty_task_buf, (*dst_rq_len) * 8);
+        g_free(empty_task_buf);
+        int i = 0;
+        for (i = 0; i < *dst_rq_len; i++) {
+            uint64_t task_id = task_buf[i];
+            // info_report("task_id: 0x%lx", task_id);
+            uint64_t priority = (task_id >> 1) % MAX_PRIORITY;
+            pq_push(pq, priority, task_id);
+        }
     }
     g_free(dst_rq_ptr);
     g_free(dst_rq_len);
@@ -314,8 +317,8 @@ Capability* cap_queue_iter(CapQueue* cap_queue) {
         cap_buf[i].target.proc_id = cur->cap.target.proc_id;
         cap_buf[i].target.task_id = cur->cap.target.task_id;
         i += 1;
-        g_free(cur);
         QSIMPLEQ_REMOVE_HEAD(head, next);
+        g_free(cur);
     }
     return cap_buf;
 }
@@ -348,7 +351,7 @@ void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             // checkout tasks of the src_task
             uint64_t* src_sendcap_cap = g_new0(uint64_t, 1);
             cpu_physical_memory_read(src_sendcap_addr, (void*)src_sendcap_cap, 8);
-            assert(len < *src_sendcap_cap);
+            assert(len <= *src_sendcap_cap);
             g_free(src_sendcap_cap);
             // read the ready queue pointer
             uint64_t* src_sendcap_ptr = g_new0(uint64_t, 1);
@@ -417,7 +420,7 @@ void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue*
             // checkout tasks of the src_task
             uint64_t* src_recvcap_cap = g_new0(uint64_t, 1);
             cpu_physical_memory_read(src_recvcap_addr, (void*)src_recvcap_cap, 8);
-            assert(len < *src_recvcap_cap);
+            assert(len <= *src_recvcap_cap);
             g_free(src_recvcap_cap);
             // read the ready queue pointer
             uint64_t* src_recvcap_ptr = g_new0(uint64_t, 1);
