@@ -32,12 +32,13 @@
 #define SWITCH_HYPERVISOR_OP            0x78
 #define CURRENT_OP                      0x80
 #define REMOVE_OP                       0x88
-#define CAUSE_OP                        0x90
+#define STATUS_OP                       0x90
 #define DUMP_OP                         0x98
 
 typedef enum {
-    PREEMPT = 0,
-    KILL = 1,
+    NORMAL = 0,
+    PREEMPT = 1,
+    KILL = 2,
 } Cause;
 
 #define TCB_ALIGN                       0x40
@@ -80,7 +81,8 @@ bool pq_is_empty(PriorityQueue* pq);
 uint64_t pq_len(PriorityQueue* pq);
 uint64_t* pq_iter(PriorityQueue* pq);
 void pq_remove(PriorityQueue* pq, uint64_t task_id);
-void switch_ready_queue(uint64_t src_task_id, uint64_t dst_task_id, PriorityQueue* pq);
+void store_ready_queue(uint64_t src_task_id, PriorityQueue* pq);
+void load_ready_queue(uint64_t dst_task_id, PriorityQueue* pq);
 
 typedef struct {
     uint64_t os_id;
@@ -94,6 +96,8 @@ typedef struct {
 } Capability;
 
 void switch_device_cap(uint64_t src_task_id, uint64_t dst_task_id, Capability* device_cap);
+void store_device_cap(uint64_t src_task_id, Capability* device_cap);
+void load_device_cap(uint64_t dst_task_id, Capability* device_cap);
 
 typedef QSIMPLEQ_HEAD(, CapQueueEntry) CapQueueHead;
 
@@ -129,7 +133,14 @@ void cap_queue_logout(CapQueue* cap_queue, uint64_t task_id);
 void switch_send_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue);
 void switch_recv_cap_queue(uint64_t src_task_id, uint64_t dst_task_id, CapQueue* cap_queue, PriorityQueue* pq);
 
+void store_send_cap_queue(uint64_t src_task_id, CapQueue* cap_queue);
+void store_recv_cap_queue(uint64_t src_task_id, CapQueue* cap_queue);
+void load_send_cap_queue(uint64_t dst_task_id, CapQueue* cap_queue);
+void load_recv_cap_queue(uint64_t dst_task_id, CapQueue* cap_queue, PriorityQueue* pq);
+
+
 typedef struct {
+    uint64_t count;
     uint64_t hypervisor_id;
     TotalIdentity current;
     PriorityQueue ready_queue;
@@ -144,6 +155,9 @@ typedef struct {
 
 int64_t check_online(MoicHart* moicharts, uint64_t hart_count, uint64_t os_id, uint64_t proc_id, int64_t exclude_idx);
 void modify_task_status(uint64_t target_task_id);
+
+uint64_t current(MoicHart* moichart);
+int64_t check_other_online(MoicHart* moicharts, uint64_t hart_count, int64_t exclude_idx, uint64_t target_id);
 
 struct RISCVMOICState {
     /*< private >*/
@@ -161,6 +175,7 @@ struct RISCVMOICState {
 
 
     /* config */
+    uint64_t* harts_map;
     MoicHart* moicharts;
 };
 
