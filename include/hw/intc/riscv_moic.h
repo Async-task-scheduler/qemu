@@ -44,12 +44,13 @@ typedef enum {
 
 #define TCB_ALIGN                       0x40
 #define READY_QUEUE_OFFSET              0x00
-#define READY_QUEUE_STRUCT_SIZE         0x20
+#define READY_QUEUE_STRUCT_SIZE         0x28
 #define DEVICE_CAP_PTR_OFFSET           READY_QUEUE_OFFSET + READY_QUEUE_STRUCT_SIZE
 #define SEND_CAP_OFFSET                 DEVICE_CAP_PTR_OFFSET + 8
-#define SEND_CAP_STRUCT_SIZE            0x20
+#define SEND_CAP_STRUCT_SIZE            0x28
 #define RECV_CAP_OFFSET                 SEND_CAP_OFFSET + SEND_CAP_STRUCT_SIZE
-#define STATUS_OFFSET                   RECV_CAP_OFFSET + 8
+#define RECV_CAP_STRUCT_SIZE            SEND_CAP_STRUCT_SIZE
+#define STATUS_OFFSET                   RECV_CAP_OFFSET + RECV_CAP_STRUCT_SIZE
 
 #define TYPE_RISCV_MOIC "riscv.moic"
 
@@ -691,6 +692,7 @@ static inline void modify_task_status(uint64_t target_task_id) {
     uint64_t* status = g_new0(uint64_t, 1);
     *status = 1;
     cpu_physical_memory_write(target_tcb_status_addr, (void*)status, 8);
+    info_report("modify task status");
     g_free(status);
 }
 
@@ -732,6 +734,65 @@ static inline int64_t search_empty_datasheet(RISCVMOICState* moic, int64_t start
     return choose_idx;
 }
 
+static inline void rq_task_count_inc(uint64_t task_id) {
+    // Increment the ready task count
+    uint64_t tcb = task_id & (~(TCB_ALIGN - 1));
+    uint64_t rq_addr = tcb + READY_QUEUE_OFFSET;
+    uint64_t rq_count = 0;
+    cpu_physical_memory_read(rq_addr + 8 * 4, (void*)&rq_count, 8);
+    rq_count += 1;
+    cpu_physical_memory_write(rq_addr + 8 * 4, (void*)&rq_count, 8);
+}
+
+static inline void rq_task_count_dec(uint64_t task_id) {
+    // Decrement the ready task count
+    uint64_t tcb = task_id & (~(TCB_ALIGN - 1));
+    uint64_t rq_addr = tcb + READY_QUEUE_OFFSET;
+    uint64_t rq_count = 0;
+    cpu_physical_memory_read(rq_addr + 8 * 4, (void*)&rq_count, 8);
+    rq_count -= 1;
+    cpu_physical_memory_write(rq_addr + 8 * 4, (void*)&rq_count, 8);
+}
+
+static inline void send_cap_count_inc(uint64_t task_id) {
+    // Increment the send capability count
+    uint64_t tcb = task_id & (~(TCB_ALIGN - 1));
+    uint64_t send_cap_addr = tcb + SEND_CAP_OFFSET;
+    uint64_t send_cap_count = 0;
+    cpu_physical_memory_read(send_cap_addr + 8 * 4, (void*)&send_cap_count, 8);
+    send_cap_count += 1;
+    cpu_physical_memory_write(send_cap_addr + 8 * 4, (void*)&send_cap_count, 8);
+}
+
+static inline void send_cap_count_dec(uint64_t task_id) {
+    // Decrement the send capability count
+    uint64_t tcb = task_id & (~(TCB_ALIGN - 1));
+    uint64_t send_cap_addr = tcb + SEND_CAP_OFFSET;
+    uint64_t send_cap_count = 0;
+    cpu_physical_memory_read(send_cap_addr + 8 * 4, (void*)&send_cap_count, 8);
+    send_cap_count -= 1;
+    cpu_physical_memory_write(send_cap_addr + 8 * 4, (void*)&send_cap_count, 8);
+}
+
+static inline void recv_cap_count_inc(uint64_t task_id) {
+    // Increment the send capability count
+    uint64_t tcb = task_id & (~(TCB_ALIGN - 1));
+    uint64_t recv_cap_addr = tcb + RECV_CAP_OFFSET;
+    uint64_t recv_cap_count = 0;
+    cpu_physical_memory_read(recv_cap_addr + 8 * 4, (void*)&recv_cap_count, 8);
+    recv_cap_count += 1;
+    cpu_physical_memory_write(recv_cap_addr + 8 * 4, (void*)&recv_cap_count, 8);
+}
+
+static inline void recv_cap_count_dec(uint64_t task_id) {
+    // Increment the send capability count
+    uint64_t tcb = task_id & (~(TCB_ALIGN - 1));
+    uint64_t recv_cap_addr = tcb + RECV_CAP_OFFSET;
+    uint64_t recv_cap_count = 0;
+    cpu_physical_memory_read(recv_cap_addr + 8 * 4, (void*)&recv_cap_count, 8);
+    recv_cap_count -= 1;
+    cpu_physical_memory_write(recv_cap_addr + 8 * 4, (void*)&recv_cap_count, 8);
+}
 
 DeviceState *riscv_moic_create(hwaddr addr, uint32_t hart_count, uint32_t external_irq_count);
 

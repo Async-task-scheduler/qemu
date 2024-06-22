@@ -25,6 +25,8 @@ static uint64_t riscv_moic_read(void *opaque, hwaddr addr, unsigned size) {
         if (datasheet_id >= 0 && datasheet_id < hart_count) {
             uint64_t task_id = pq_pop(&moic->datasheets[datasheet_id].ready_queue);
             if (task_id != 0) {
+                uint64_t current_task = current(&moic->transactions[idx]);
+                rq_task_count_dec(current_task);
                 hart_transaction_set_cur_task(&moic->transactions[idx], task_id);
                 qemu_log_mask(LOG_UNIMP, "hart %d Fetch, actual datasheet_id: %ld\n", idx, datasheet_id);
             } else {
@@ -57,6 +59,8 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
     uint64_t op = addr % SIZEOF_PERHART;
     uint32_t hart_count = moic->hart_count;
     if (op == ADD_OP) {
+        uint64_t current_task = current(&moic->transactions[idx]);
+        rq_task_count_inc(current_task);
         int64_t datasheet_id = moic->transactions[idx].datasheet_id;
         assert(datasheet_id < hart_count);
         uint64_t priority = (value >> 1) % MAX_PRIORITY;
@@ -202,6 +206,8 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
             uint64_t target_task_id = moic->transactions[idx].register_receiver_transaction.target.task_id;
             cap_queue_insert(&moic->datasheets[datasheet_id].recv_cap, task_id, target_os_id, target_proc_id, target_task_id);
             qemu_log_mask(LOG_UNIMP, "hart %d register ipc receiver.\n", idx);
+            uint64_t current_task = current(&moic->transactions[idx]);
+            recv_cap_count_inc(current_task);
         }
     } else if (op == REGISTER_SEND_TASK_OP) {
         moic->transactions[idx].register_sender_transaction.task_id = value;
@@ -223,82 +229,128 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
         }
         cap_queue_insert(&moic->datasheets[datasheet_id].send_cap, task_id, target_os_id, target_proc_id, target_task_id);
         qemu_log_mask(LOG_UNIMP, "hart %d register ipc sender.\n", idx);
+        uint64_t current_task = current(&moic->transactions[idx]);
+        send_cap_count_inc(current_task);
     } else if (op == SEND_INTR_OS_OP) {
-        // moic->moicharts[idx].send_intr_transaction.os_id = value;
+        moic->transactions[idx].send_intr_transaction.os_id = value;
     } else if (op == SEND_INTR_PROC_OP) {
-        // moic->moicharts[idx].send_intr_transaction.proc_id = value;
+        moic->transactions[idx].send_intr_transaction.proc_id = value;
     } else if (op == SEND_INTR_TASK_OP) {
-        // // send intr
-        // uint64_t target_os_id = moic->moicharts[idx].send_intr_transaction.os_id;
-        // uint64_t target_proc_id = moic->moicharts[idx].send_intr_transaction.proc_id;
-        // uint64_t target_task_id = moic->moicharts[idx].send_intr_transaction.task_id = value;
-        // // check whether the sender has the send_cap
-        // uint64_t sender_task_id = cap_queue_find(&moic->moicharts[idx].send_cap, target_os_id, target_proc_id, target_task_id);
-        // if (sender_task_id == 0) {
-        //     return;
-        // }
-        // // check whether the receiver is online
-        // int64_t online_idx = check_online(moic->moicharts, hart_count, target_os_id, target_proc_id, -1);
-        // if (online_idx >= 0 && online_idx < hart_count) {
-        //     if (moic->moicharts[online_idx].current.proc_id == target_proc_id) {    // receive process is online
-        //         uint64_t sender_os_id = moic->moicharts[idx].current.os_id;
-        //         uint64_t sender_proc_id = moic->moicharts[idx].current.proc_id;
-        //         uint64_t receiver_task = cap_queue_find(&moic->moicharts[online_idx].recv_cap, sender_os_id, sender_proc_id, sender_task_id);
-        //         if (receiver_task != 0) {
-        //             assert(target_task_id == receiver_task);
-        //             uint64_t priority = (receiver_task >> 1) % MAX_PRIORITY;
-        //             pq_push(&moic->moicharts[online_idx].ready_queue, priority, receiver_task);
-        //             // check whether the task is preemptible
-        //             bool is_preempt = (receiver_task & 1) == 0;
-        //             if (is_preempt) {
-        //                 qemu_irq_pulse(moic->usoft_irqs[online_idx]);
-        //                 moic->moicharts[online_idx].cause = PREEMPT;
-        //             }
-        //             return;
-        //         }
-        //     } else {    // receive process is not online, the os is online
-        //         // wake the receive process 
-        //         uint64_t sender_os_id = moic->moicharts[idx].current.os_id;
-        //         uint64_t sender_proc_id = moic->moicharts[idx].current.proc_id;
-        //         // os need to retain the send/recv process.
-        //         uint64_t receiver_process = cap_queue_find(&moic->moicharts[online_idx].recv_cap, sender_os_id, sender_proc_id, 0);
-        //         if (receiver_process != 0) {
-        //             assert(receiver_process == target_proc_id);
-        //             uint64_t priority = (target_proc_id >> 1) % MAX_PRIORITY;
-        //             pq_push(&moic->moicharts[online_idx].ready_queue, priority, target_proc_id);
-        //             // The target task is in the recv_cap. So just modify the target task status.
-        //             modify_task_status(target_task_id);
-        //             // check the receive process is preemptible.
-        //             bool is_preempt = (target_proc_id & 1) == 0;
-        //             if (is_preempt) {
-        //                 qemu_irq_pulse(moic->ssoft_irqs[online_idx]);
-        //                 moic->moicharts[online_idx].cause = PREEMPT;
-        //             }
-        //         }
-        //     }
-        // } else {    
-        //     // the receive process is in another os and that os is not online, the other harts run the hypervisor
-        //     // assume that all harts are run on the same hypervisor
-        //     // wake the os and modify the status of process and task
-        //     // check whether the hypervisor is online
-        //     int i = 0, target_idx = -1;
-        //     for (i = 0; i < hart_count; i++) {
-        //         if ((i != idx) && moic->moicharts[i].current.os_id == 0) {
-        //             target_idx = i;
-        //             break;
-        //         }
-        //     }
-        //     if (target_idx < 0) { // hypervisor is not online
-        //         return;
-        //     }
-        //     // wake the target os
-        //     uint64_t priority = (target_os_id >> 1) % MAX_PRIORITY;
-        //     pq_push(&moic->moicharts[target_idx].ready_queue, priority, target_os_id);
-        //     // modify process status
-        //     modify_task_status(target_proc_id);
-        //     // modify task status
-        //     modify_task_status(target_task_id);
-        // }
+        // send intr
+        moic->transactions[idx].send_intr_transaction.task_id = value;
+        uint64_t target_os_id = moic->transactions[idx].send_intr_transaction.os_id;
+        uint64_t target_proc_id = moic->transactions[idx].send_intr_transaction.proc_id;
+        uint64_t target_task_id = moic->transactions[idx].send_intr_transaction.task_id;
+        int64_t datasheet_id = moic->transactions[idx].datasheet_id;
+        assert(datasheet_id < hart_count);
+        // check whether the sender has the send_cap
+        uint64_t task_id_sender = cap_queue_find(&moic->datasheets[datasheet_id].send_cap, target_os_id, target_proc_id, target_task_id);
+        if (task_id_sender == 0) {
+            return;
+        }
+        // check whether the receiver is online
+        int64_t online_idx = -1;
+        if (target_proc_id != 0) {
+            // the receiver is process
+            online_idx = check_online(moic, idx, target_proc_id);
+            if (online_idx >= 0 && online_idx < hart_count) {       // receive process is online.
+                datasheet_id = moic->transactions[online_idx].datasheet_id;
+                uint64_t sender_os_id = moic->transactions[idx].current.os_id;
+                uint64_t sender_proc_id = moic->transactions[idx].current.proc_id;
+                uint64_t sender_task_id = moic->transactions[idx].current.task_id;
+                uint64_t receiver_task = cap_queue_find(&moic->datasheets[datasheet_id].recv_cap, sender_os_id, sender_proc_id, sender_task_id);
+                if (receiver_task != 0) {
+                    assert(target_task_id == receiver_task);
+                    uint64_t priority = (receiver_task >> 1) % MAX_PRIORITY;
+                    pq_push(&moic->datasheets[datasheet_id].ready_queue, priority, receiver_task);
+                    uint64_t current_task = current(&moic->transactions[online_idx]);
+                    rq_task_count_inc(current_task);
+                    // check whether the task is preemptible
+                    bool is_preempt = (receiver_task & 1) != 0;
+                    if (is_preempt) {
+                        qemu_irq_raise(moic->usoft_irqs[online_idx]);
+                        moic->transactions[online_idx].cause = PREEMPT;
+                        qemu_log_mask(LOG_UNIMP, "hart %d send intr, preempt, receiver process is running on hart %ld, actual datasheet_id: %ld\n", idx, online_idx, datasheet_id);
+                    } else {
+                        qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver process is running on hart %ld, actual datasheet_id: %ld\n", idx, online_idx, datasheet_id);
+                    }
+                    return;
+                } else {
+                    qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver process is online, but has no receive task\n", idx);
+                }
+            } else {    // receive process is not online
+                // check whether the os is online?
+                online_idx = check_online(moic, idx, target_os_id);
+                if (online_idx >= 0 && online_idx < hart_count) {       // the os that receive process belong to is online.
+                    // wake the receive process
+                    datasheet_id = moic->transactions[online_idx].datasheet_id;
+                    uint64_t sender_os_id = moic->transactions[idx].current.os_id;
+                    uint64_t sender_proc_id = moic->transactions[idx].current.proc_id;
+                    uint64_t sender_task_id = moic->transactions[idx].current.task_id;                    
+                    uint64_t receiver_process = cap_queue_find(&moic->datasheets[datasheet_id].recv_cap, sender_os_id, sender_proc_id, sender_task_id);
+                    if (receiver_process != 0) {
+                        assert(receiver_process == target_proc_id);
+                        uint64_t priority = (receiver_process >> 1) % MAX_PRIORITY;
+                        pq_push(&moic->datasheets[datasheet_id].ready_queue, priority, receiver_process);
+                        uint64_t current_task = current(&moic->transactions[online_idx]);
+                        rq_task_count_inc(current_task);
+                        // The target task is in the recv_cap. So just modify the target task status.
+
+                        // TODO: the task is in process address space. Need MMU.
+                        modify_task_status(target_task_id);
+                        // check the receive process is preemptible.
+                        bool is_preempt = (receiver_process & 1) != 0;
+                        if (is_preempt) {
+                            qemu_irq_raise(moic->ssoft_irqs[online_idx]);
+                            moic->transactions[online_idx].cause = PREEMPT;
+                            qemu_log_mask(LOG_UNIMP, "hart %d send intr, preempt, receiver process is not online, os is running on hart %ld, actual datasheet_id: %ld\n", idx, online_idx, datasheet_id);
+                        } else {
+                            qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver process is not online, os is running on hart %ld, actual datasheet_id: %ld\n", idx, online_idx, datasheet_id);
+                        }
+                    } else {
+                        qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver process is not online, but has no receive process\n", idx);
+                    }
+                } else {    // os is not online, all harts run process.
+                    qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver process and os is not online\n", idx);
+                    // modify process status
+                    modify_task_status(target_proc_id);
+                    // modify task status
+                    modify_task_status(target_task_id);
+                }
+            }
+        } else {
+            // the receiver is os
+            online_idx = check_online(moic, idx, target_os_id);
+            if (online_idx >= 0 && online_idx < hart_count) {       // receive os is online.
+                datasheet_id = moic->transactions[online_idx].datasheet_id;
+                uint64_t sender_os_id = moic->transactions[idx].current.os_id;
+                uint64_t sender_proc_id = moic->transactions[idx].current.proc_id;
+                uint64_t sender_task_id = moic->transactions[idx].current.task_id;
+                info_report("sender os: %lx, sender proc: %lx, sender task: %lx", sender_os_id, sender_proc_id, sender_task_id);
+                uint64_t receiver_task = cap_queue_find(&moic->datasheets[datasheet_id].recv_cap, sender_os_id, sender_proc_id, sender_task_id);
+                if (receiver_task != 0) {
+                    assert(target_task_id == receiver_task);
+                    uint64_t priority = (receiver_task >> 1) % MAX_PRIORITY;
+                    pq_push(&moic->datasheets[datasheet_id].ready_queue, priority, receiver_task);
+                    uint64_t current_task = current(&moic->transactions[online_idx]);
+                    rq_task_count_inc(current_task);
+                    // check whether the task is preemptible
+                    bool is_preempt = (receiver_task & 1) != 0;
+                    if (is_preempt) {
+                        qemu_irq_raise(moic->ssoft_irqs[online_idx]);
+                        moic->transactions[online_idx].cause = PREEMPT;
+                        qemu_log_mask(LOG_UNIMP, "hart %d send intr, preempt, receiver os is running on hart %ld, actual datasheet_id: %ld\n", idx, online_idx, datasheet_id);
+                    } else {
+                        qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver os is running on hart %ld, actual datasheet_id: %ld\n", idx, online_idx, datasheet_id);
+                    }
+                    return;
+                } else {
+                    qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver os is online, but has no receive task\n", idx);
+                }
+            } else {
+                qemu_log_mask(LOG_UNIMP, "hart %d send intr, receiver os is not online\n", idx);
+            }
+        }
     } else if (op == REMOVE_OP) {
         // // remove the target task
         // if (value != 0) {
