@@ -45,8 +45,9 @@ typedef enum {
 #define TCB_ALIGN                       0x40
 #define READY_QUEUE_OFFSET              0x00
 #define READY_QUEUE_STRUCT_SIZE         0x28
-#define DEVICE_CAP_PTR_OFFSET           READY_QUEUE_OFFSET + READY_QUEUE_STRUCT_SIZE
-#define SEND_CAP_OFFSET                 DEVICE_CAP_PTR_OFFSET + 8
+#define DEVICE_CAP_OFFSET               READY_QUEUE_OFFSET + READY_QUEUE_STRUCT_SIZE
+#define DEVICE_CAP_SIZE                 MAX_IRQ * 0x20
+#define SEND_CAP_OFFSET                 DEVICE_CAP_OFFSET + DEVICE_CAP_SIZE
 #define SEND_CAP_STRUCT_SIZE            0x28
 #define RECV_CAP_OFFSET                 SEND_CAP_OFFSET + SEND_CAP_STRUCT_SIZE
 #define RECV_CAP_STRUCT_SIZE            SEND_CAP_STRUCT_SIZE
@@ -338,21 +339,15 @@ static inline void capability_init(Capability* capability) {
 static inline void store_device_cap(uint64_t src_task_id, Capability* device_cap) {
     if (src_task_id != 0) {
         uint64_t src_tcb = src_task_id & (~(TCB_ALIGN - 1));
-        uint64_t src_device_cap_ptr_addr = src_tcb + DEVICE_CAP_PTR_OFFSET;
-        uint64_t* src_device_cap_ptr = g_new0(uint64_t, 1);
-        cpu_physical_memory_read(src_device_cap_ptr_addr, (void*)src_device_cap_ptr, 8);
-        cpu_physical_memory_write(*src_device_cap_ptr, (void*)device_cap, MAX_IRQ * sizeof(Capability));
-        g_free(src_device_cap_ptr);
+        uint64_t src_device_cap_ptr = src_tcb + DEVICE_CAP_OFFSET;
+        cpu_physical_memory_write(src_device_cap_ptr, (void*)device_cap, MAX_IRQ * sizeof(Capability));
     }
 }
 
 static inline void load_device_cap(uint64_t dst_task_id, Capability* device_cap) {
     uint64_t dst_tcb = dst_task_id & (~(TCB_ALIGN - 1));
-    uint64_t dst_device_cap_ptr_addr = dst_tcb + DEVICE_CAP_PTR_OFFSET;
-    uint64_t* dst_device_cap_ptr = g_new0(uint64_t, 1);
-    cpu_physical_memory_read(dst_device_cap_ptr_addr, (void*)dst_device_cap_ptr, 8);
-    cpu_physical_memory_read(*dst_device_cap_ptr, (void*)device_cap, MAX_IRQ * sizeof(Capability));
-    g_free(dst_device_cap_ptr);
+    uint64_t dst_device_cap_ptr = dst_tcb + DEVICE_CAP_OFFSET;
+    cpu_physical_memory_read(dst_device_cap_ptr, (void*)device_cap, MAX_IRQ * sizeof(Capability));
 }
 
 static inline void cap_queue_init(CapQueue* cap_queue) {
