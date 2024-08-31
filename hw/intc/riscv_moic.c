@@ -28,7 +28,7 @@ static uint64_t riscv_moic_read(void *opaque, hwaddr addr, unsigned size) {
                 uint64_t current_task = current(&moic->transactions[idx]);
                 rq_task_count_dec(current_task);
                 hart_transaction_set_cur_task(&moic->transactions[idx], task_id);
-                qemu_log_mask(LOG_UNIMP, "hart %d Fetch, actual datasheet_id: %ld\n", idx, datasheet_id);
+                qemu_log_mask(LOG_UNIMP, "hart %d Fetch, actual datasheet_id: %ld, taskid: %lx\n", idx, datasheet_id, task_id);
             } else {
                 qemu_log_mask(LOG_UNIMP, "hart %d Fetch, actual datasheet_id: %ld, no task\n", idx, datasheet_id);
             }
@@ -65,7 +65,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
         assert(datasheet_id < hart_count);
         uint64_t priority = (value >> 1) % MAX_PRIORITY;
         pq_push(&moic->datasheets[datasheet_id].ready_queue, priority, value);
-        qemu_log_mask(LOG_UNIMP, "hart %d Add, actual datasheet_id: %ld\n", idx, datasheet_id);
+        qemu_log_mask(LOG_UNIMP, "hart %d Add, actual datasheet_id: %ld, task_id: %lx\n", idx, datasheet_id, value);
     } else if (op == SWITCH_HYPERVISOR_OP) {
 
     } else if (op == SWITCH_OS_OP) {
@@ -98,7 +98,7 @@ static void riscv_moic_write(void *opaque, hwaddr addr, uint64_t value, unsigned
             }
             int64_t choose_idx = search_empty_datasheet(moic, idx);
             if (choose_idx >= 0) {
-                qemu_log_mask(LOG_UNIMP, "hart %d non -> os, os is not online, choose idx: %ld\n", idx, choose_idx);
+                qemu_log_mask(LOG_UNIMP, "hart %d non -> os, os is not online, choose idx: %ld, os_id: %lx\n", idx, choose_idx, value);
                 hart_transaction_set_cur_os(&moic->transactions[idx], value);
                 hart_transaction_set_datasheet_id(&moic->transactions[idx], choose_idx);
                 datasheet_ref_inc(&moic->datasheets[choose_idx]);
